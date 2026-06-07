@@ -4,10 +4,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 
-import 'login_screen.dart';
+// removed unused import: login_screen.dart
+import 'edit_profile_screen.dart';
 
 import '../services/cloudinary_service.dart';
 import '../services/profile_background_video_service.dart';
+import '../utils/route_observer.dart';
 import '../widgets/profile/profile_background.dart';
 import '../widgets/profile/profile_screen_layout.dart';
 import 'profile_video_fullscreen_page.dart';
@@ -15,16 +17,25 @@ import '../widgets/profile/profile_header.dart';
 import '../widgets/profile/profile_stats.dart';
 import '../widgets/profile/profile_posts_grid.dart';
 
+import 'settings_screen.dart';
+
 class ProfileScreen extends StatefulWidget {
   final String userId;
+  final ValueNotifier<int>? indexNotifier;
+  final int tabIndex;
 
-  const ProfileScreen({super.key, required this.userId});
+  const ProfileScreen({
+    super.key,
+    required this.userId,
+    this.indexNotifier,
+    this.tabIndex = 3,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
   String userName = "User Name";
   String bio = "";
   String? photoUrl;
@@ -33,6 +44,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   final ProfileBackgroundVideoService _backgroundVideoService =
       ProfileBackgroundVideoService();
+
+  bool _videoLoaded = false;
+  VoidCallback? _indexListener;
 
   void _notify() {
     if (mounted) setState(() {});
@@ -57,67 +71,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
     }
 
-    await _backgroundVideoService.loadSavedVideo(
-      widget.userId,
-      onVideoUpdated: _notify,
-    );
-    if (_backgroundVideoService.backgroundVideoUrl.isNotEmpty) {
-      coverType = 'video';
-      coverUrl = _backgroundVideoService.backgroundVideoUrl;
-    }
+    // Do not auto-load background video here. Video is loaded when this
+    // screen becomes active (visible) via the index notifier.
     _notify();
   }
 
   void editProfile() {
-    final nameController = TextEditingController(text: userName);
-    final bioController = TextEditingController(text: bio);
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Edit Profile"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: "Name"),
-              ),
-              TextField(
-                controller: bioController,
-                decoration: const InputDecoration(labelText: "Bio"),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () async {
-                final user = FirebaseAuth.instance.currentUser;
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user!.uid)
-                    .set({
-                      'username': nameController.text,
-                      'bio': bioController.text,
-                    }, SetOptions(merge: true));
-
-                setState(() {
-                  userName = nameController.text;
-                  bio = bioController.text;
-                });
-
-                Navigator.pop(context);
-              },
-              child: const Text("Save"),
-            ),
-          ],
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const EditProfileScreen()),
     );
   }
 
@@ -147,10 +109,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     loadProfile();
     getUserData();
+
+    // Listen to tab index changes so we only load/play the background
+    // video when this tab is active.
+    if (widget.indexNotifier != null) {
+      _indexListener = () {
+        final isActive = widget.indexNotifier!.value == widget.tabIndex;
+        if (isActive) {
+          if (!_videoLoaded) {
+            _backgroundVideoService
+                .loadSavedVideo(widget.userId, onVideoUpdated: _notify)
+                .then((_) {
+                  _videoLoaded = true;
+                  if (_backgroundVideoService.backgroundVideoUrl.isNotEmpty) {
+                    setState(() {
+                      coverType = 'video';
+                      coverUrl = _backgroundVideoService.backgroundVideoUrl;
+                    });
+                  }
+                });
+          } else {
+            _backgroundVideoService.controller?.play();
+          }
+        } else {
+          _backgroundVideoService.controller?.pause();
+        }
+      };
+      widget.indexNotifier!.addListener(_indexListener!);
+
+      // Trigger once for the initial state.
+      _indexListener!();
+    } else {
+      _backgroundVideoService
+          .loadSavedVideo(widget.userId, onVideoUpdated: _notify)
+          .then((_) {
+            if (_backgroundVideoService.backgroundVideoUrl.isNotEmpty) {
+              setState(() {
+                coverType = 'video';
+                coverUrl = _backgroundVideoService.backgroundVideoUrl;
+              });
+            }
+          });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    // Another route has been pushed atop this one — pause the background video.
+    _backgroundVideoService.controller?.pause();
+  }
+
+  @override
+  void didPopNext() {
+    // Returned to this route — resume the background video only if this
+    // tab is currently active.
+    final isActive = widget.indexNotifier == null
+        ? true
+        : widget.indexNotifier!.value == widget.tabIndex;
+    if (isActive) _backgroundVideoService.controller?.play();
   }
 
   @override
   void dispose() {
+    if (widget.indexNotifier != null && _indexListener != null) {
+      widget.indexNotifier!.removeListener(_indexListener!);
+    }
+    try {
+      routeObserver.unsubscribe(this);
+    } catch (_) {}
     _backgroundVideoService.dispose();
     super.dispose();
   }
@@ -225,13 +260,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (!mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => SettingsScreen()),
               );
             },
           ),
@@ -272,12 +305,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
         ),
-        coverActions: ProfileCoverActions(
-          hasVideo: videoService.hasVideo,
-          isUploading: videoService.isUploading,
-          backgroundVideoUrl: videoService.backgroundVideoUrl,
-          onPickVideo: pickAndSaveBackgroundVideo,
-          onFullscreen: _openFullscreenVideo,
+        coverActions: SizedBox(
+          height: 260,
+          width: double.infinity,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    // If a background video exists, open the existing fullscreen viewer.
+                    if (videoService.backgroundVideoUrl.isNotEmpty) {
+                      _openFullscreenVideo();
+                      return;
+                    }
+
+                    // If there's a cover image, show it full-screen.
+                    if (coverUrl.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => Scaffold(
+                            backgroundColor: Colors.black,
+                            body: SafeArea(
+                              top: false,
+                              bottom: false,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => Navigator.of(context).pop(),
+                                child: Center(
+                                  child: InteractiveViewer(
+                                    child: Image.network(
+                                      coverUrl,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+              Transform.translate(
+                offset: const Offset(0, -104),
+                child: ProfileCoverActions(
+                  hasVideo: videoService.hasVideo,
+                  isUploading: videoService.isUploading,
+                  backgroundVideoUrl: videoService.backgroundVideoUrl,
+                  onPickVideo: pickAndSaveBackgroundVideo,
+                  // Note: intentionally NOT passing `onFullscreen` to remove the fullscreen button.
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

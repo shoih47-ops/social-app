@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'home_screen.dart';
 
 class CreateUsernameScreen extends StatefulWidget {
+  const CreateUsernameScreen({super.key});
+
   @override
   _CreateUsernameScreenState createState() => _CreateUsernameScreenState();
 }
@@ -35,13 +38,14 @@ class _CreateUsernameScreenState extends State<CreateUsernameScreen> {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       'uid': uid,
       'username': username,
-      'bio': 'My bio',
+      'bio': '',
       'photoUrl': '',
       'coverUrl': '',
       'coverType': 'image',
       'email': FirebaseAuth.instance.currentUser!.email,
       'followers': [],
       'following': [],
+      'fcmToken': await FirebaseMessaging.instance.getToken(),
     }, SetOptions(merge: true));
 
     Navigator.pushReplacement(

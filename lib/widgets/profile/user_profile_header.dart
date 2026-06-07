@@ -38,11 +38,7 @@ class UserProfileHeader extends StatelessWidget {
                 ? NetworkImage(photoUrl!)
                 : null,
             child: photoUrl == null || photoUrl!.isEmpty
-                ? const Icon(
-                    Icons.person,
-                    size: 40,
-                    color: Colors.white,
-                  )
+                ? const Icon(Icons.person, size: 40, color: Colors.white)
                 : null,
           ),
         ),
@@ -63,12 +59,9 @@ class UserProfileHeader extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text(
-            bio.isEmpty ? "This user has no bio yet" : bio,
+            bio.isEmpty ? "" : bio,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black54,
-              fontSize: 15,
-            ),
+            style: const TextStyle(color: Colors.black54, fontSize: 15),
           ),
         ),
 

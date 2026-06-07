@@ -89,7 +89,7 @@ class ProfileHeader extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text(
-            bio.isEmpty ? "Add a bio..." : bio,
+            bio.isEmpty ? "" : bio,
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.black54, fontSize: 15),
           ),

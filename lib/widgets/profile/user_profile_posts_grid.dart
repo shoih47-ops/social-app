@@ -20,7 +20,7 @@ class UserProfilePostsGrid extends StatelessWidget {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              "Posts",
+              "Moments",
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -131,6 +131,21 @@ class UserProfilePostsGrid extends StatelessWidget {
                         : (post['imageUrl'] != null && post['imageUrl'] != ""
                               ? Hero(
                                   tag: doc.id,
+                                  flightShuttleBuilder:
+                                      (
+                                        flightContext,
+                                        animation,
+                                        flightDirection,
+                                        fromHeroContext,
+                                        toHeroContext,
+                                      ) {
+                                        return FadeTransition(
+                                          opacity: animation.drive(
+                                            CurveTween(curve: Curves.easeInOut),
+                                          ),
+                                          child: toHeroContext.widget,
+                                        );
+                                      },
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(18),
                                     child: CachedNetworkImage(

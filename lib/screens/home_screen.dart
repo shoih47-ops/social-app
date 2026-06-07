@@ -16,11 +16,29 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int currentIndex = 0;
+  late final List<Widget> _screens;
+  late final ValueNotifier<int> _currentIndexNotifier;
 
   void goToFeed() {
     setState(() {
       currentIndex = 0;
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndexNotifier = ValueNotifier<int>(currentIndex);
+    _screens = [
+      const FeedScreen(),
+      CreatePostScreen(onPostSuccess: goToFeed),
+      const NotificationScreen(),
+      ProfileScreen(
+        userId: FirebaseAuth.instance.currentUser!.uid,
+        indexNotifier: _currentIndexNotifier,
+        tabIndex: 3,
+      ),
+    ];
   }
 
   Stream<int> getUnreadCount() {
@@ -37,100 +55,121 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screens = [
-      const FeedScreen(),
-      CreatePostScreen(onPostSuccess: goToFeed),
-      const NotificationScreen(),
-      ProfileScreen(userId: FirebaseAuth.instance.currentUser!.uid),
-    ];
-
-    return Scaffold(
-      body: screens[currentIndex],
-
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        elevation: 0,
-        backgroundColor: const Color(0xFFF8F8FA),
-        selectedItemColor: Color(0xff8b5cf6),
-        selectedFontSize: 12,
-        unselectedItemColor: Colors.grey,
-        unselectedFontSize: 11,
-        showUnselectedLabels: false,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) {
+    return WillPopScope(
+      onWillPop: () async {
+        // If we're not on the first tab, switch to it instead of popping.
+        if (currentIndex != 0) {
           setState(() {
-            currentIndex = index;
+            currentIndex = 0;
+            _currentIndexNotifier.value = 0;
           });
-        },
+          return false; // prevent pop
+        }
 
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+        // Otherwise allow system back (exit app or pop non-tab routes).
+        return true;
+      },
+      child: Scaffold(
+        body: IndexedStack(index: currentIndex, children: _screens),
 
-          BottomNavigationBarItem(
-            icon: Container(
-              margin: const EdgeInsets.only(bottom: 2),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: currentIndex,
+          elevation: 0,
+          backgroundColor: const Color(0xFFF8F8FA),
+          selectedItemColor: Color(0xff8b5cf6),
+          selectedFontSize: 12,
+          unselectedItemColor: Colors.grey,
+          unselectedFontSize: 11,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+          onTap: (index) {
+            debugPrint('OLD: $currentIndex');
+            debugPrint('NEW: $index');
 
-              padding: const EdgeInsets.all(8),
+            setState(() {
+              currentIndex = index;
+              _currentIndexNotifier.value = index;
+            });
+          },
 
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6),
-                borderRadius: BorderRadius.circular(20),
+          items: [
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
 
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xff8b5cf6).withValues(alpha: 0.18),
-                    blurRadius: 7,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+            BottomNavigationBarItem(
+              icon: Container(
+                margin: const EdgeInsets.only(bottom: 2),
+
+                padding: const EdgeInsets.all(8),
+
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6),
+                  borderRadius: BorderRadius.circular(20),
+
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xff8b5cf6).withValues(alpha: 0.18),
+                      blurRadius: 7,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+
+                child: const Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                  size: 20,
+                ),
               ),
 
-              child: const Icon(
-                Icons.edit_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
+              label: "",
             ),
 
-            label: "",
-          ),
+            BottomNavigationBarItem(
+              label: "Notify",
+              icon: StreamBuilder<int>(
+                stream: getUnreadCount(),
+                builder: (context, snapshot) {
+                  int count = snapshot.data ?? 0;
 
-          BottomNavigationBarItem(
-            label: "Notify",
-            icon: StreamBuilder<int>(
-              stream: getUnreadCount(),
-              builder: (context, snapshot) {
-                int count = snapshot.data ?? 0;
+                  return Stack(
+                    children: [
+                      Icon(Icons.notifications),
 
-                return Stack(
-                  children: [
-                    Icon(Icons.notifications),
-
-                    if (count > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          padding: EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            count.toString(),
-                            style: TextStyle(color: Colors.white, fontSize: 10),
+                      if (count > 0)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              count.toString(),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
 
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
-        ],
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
+          ],
+        ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _currentIndexNotifier.dispose();
+    super.dispose();
   }
 }

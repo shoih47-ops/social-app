@@ -63,7 +63,7 @@ class ProfileBackgroundVideoService {
       return;
     }
 
-    await loadFromUserData(rawData as Map<String, dynamic>);
+    await loadFromUserData(rawData);
   }
 
   /// Loads and plays background video from an already-fetched user document.

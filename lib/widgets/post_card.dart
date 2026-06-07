@@ -159,125 +159,121 @@ class _PostCardState extends State<PostCard> {
                       const SizedBox(width: 12),
 
                       Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  userData['username'] ?? "user",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
-
-                                SizedBox(height: 2),
-
-                                Text(
-                                  timeAgo(widget.post.createdAt),
-                                  style: TextStyle(
-                                    color: Colors.black54,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              userData['username'] ?? "user",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
                             ),
 
-                            if (currentUser != null &&
-                                currentUser!.uid != widget.post.userId)
-                              StreamBuilder<DocumentSnapshot>(
-                                stream: FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(currentUser!.uid)
-                                    .snapshots(),
-                                builder: (context, snapshot) {
-                                  if (!snapshot.hasData) {
-                                    return const SizedBox();
-                                  }
-                                  final data =
-                                      snapshot.data!.data()
-                                          as Map<String, dynamic>;
-                                  final following = List<String>.from(
-                                    data['following'] ?? [],
-                                  );
+                            SizedBox(height: 2),
 
-                                  final isFollowing = following.contains(
-                                    widget.post.userId,
-                                  );
-
-                                  return GestureDetector(
-                                    onTap: () async {
-                                      if (isFollowing) {
-                                        await FollowService().unfollowUser(
-                                          currentUser!.uid,
-                                          widget.post.userId,
-                                        );
-                                      } else {
-                                        await FollowService().followUser(
-                                          currentUser!.uid,
-                                          widget.post.userId,
-                                          currentUser!.displayName ?? "User",
-                                        );
-                                      }
-                                    },
-
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 7,
-                                      ),
-
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF3E8FF),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-
-                                      child: Text(
-                                        isFollowing ? "Following" : "Follow",
-
-                                        style: const TextStyle(
-                                          color: Color(0xFF8B5CF6),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
+                            Text(
+                              timeAgo(widget.post.createdAt),
+                              style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w400,
                               ),
-
-                            const SizedBox(width: 8),
-
-                            PopupMenuButton<String>(
-                              onSelected: (value) async {
-                                if (value == 'report') {
-                                  await ReportService.reportPost(
-                                    postId: widget.post.id,
-                                    userId: currentUser!.uid,
-                                    reason: 'Inappropriate Content',
-                                  );
-
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Post reported'),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'report',
-                                  child: Text('Report Post'),
-                                ),
-                              ],
                             ),
                           ],
                         ),
                       ),
+
+                      if (currentUser != null &&
+                          currentUser!.uid != widget.post.userId)
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(currentUser!.uid)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const SizedBox();
+                            }
+                            final data =
+                                snapshot.data!.data() as Map<String, dynamic>;
+                            final following = List<String>.from(
+                              data['following'] ?? [],
+                            );
+
+                            final isFollowing = following.contains(
+                              widget.post.userId,
+                            );
+
+                            return GestureDetector(
+                              onTap: () async {
+                                if (isFollowing) {
+                                  await FollowService().unfollowUser(
+                                    currentUser!.uid,
+                                    widget.post.userId,
+                                  );
+                                } else {
+                                  await FollowService().followUser(
+                                    currentUser!.uid,
+                                    widget.post.userId,
+                                    currentUser!.displayName ?? "User",
+                                  );
+                                }
+                              },
+
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 7,
+                                ),
+
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF3E8FF),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+
+                                child: Text(
+                                  isFollowing ? "Following" : "Follow",
+
+                                  style: const TextStyle(
+                                    color: Color(0xFF8B5CF6),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
+                      const SizedBox(width: 14),
+
+                      if (currentUser == null ||
+                          currentUser!.uid != widget.post.userId)
+                        PopupMenuButton<String>(
+                          onSelected: (value) async {
+                            if (value == 'report') {
+                              await ReportService.reportPost(
+                                postId: widget.post.id,
+                                userId: currentUser!.uid,
+                                reason: 'Inappropriate Content',
+                              );
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Post reported'),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'report',
+                              child: Text('Report Post'),
+                            ),
+                          ],
+                        ),
                     ],
                   );
                 },

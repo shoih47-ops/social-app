@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'post_detail_screen.dart';
 import '../utils/time_ago.dart';
+import 'comment_screen.dart';
 
 import 'user_profile_screen.dart';
 
@@ -18,13 +19,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
   String getText(String type) {
     switch (type) {
       case "like":
-        return "connected with your story";
+        return "liked your post";
       case "comment":
-        return "shared a thought on your story";
+        return "commented on your post";
       case "follow":
-        return "started following your journey";
+        return "started following you";
       case "reply":
-        return "responded to your thoughts";
+        return "replied to your comment";
       default:
         return "";
     }
@@ -77,142 +78,228 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
           final docs = snapshot.data?.docs ?? [];
 
-          print(user.uid);
-
-          if (docs.isEmpty) {
+          if (docs.isEmpty)
             return const Center(child: Text("No notifications"));
+
+          final now = DateTime.now();
+          final today = <QueryDocumentSnapshot>[];
+          final yesterday = <QueryDocumentSnapshot>[];
+          final earlier = <QueryDocumentSnapshot>[];
+
+          for (final d in docs) {
+            final data = d.data() as Map<String, dynamic>;
+            final ts = data['createdAt'] as Timestamp?;
+            final date = ts != null ? ts.toDate() : now;
+            final diff = DateTime(
+              now.year,
+              now.month,
+              now.day,
+            ).difference(DateTime(date.year, date.month, date.day)).inDays;
+
+            if (diff == 0) {
+              today.add(d);
+            } else if (diff == 1) {
+              yesterday.add(d);
+            } else {
+              earlier.add(d);
+            }
           }
 
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
-
-              return Dismissible(
-                key: Key(docs[index].id),
-
-                direction: DismissDirection.endToStart,
-
-                confirmDismiss: (_) async {
-                  await FirebaseFirestore.instance
-                      .collection('notifications')
-                      .doc(user.uid)
-                      .collection('items')
-                      .doc(docs[index].id)
-                      .delete();
-
-                  return true;
-                },
-
-                background: Container(
-                  alignment: Alignment.centerRight,
-                  padding: EdgeInsets.only(right: 20),
-                  color: Colors.red,
-                  child: Icon(Icons.delete, color: Colors.white),
+          Widget buildSection(String title, List<QueryDocumentSnapshot> items) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xff6b21a8),
+                    ),
+                  ),
                 ),
+                ...items.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
 
-                child: Container(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 12,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    leading: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(child: getIcon(data['type'])),
-                    ),
-
-                    title: RichText(
-                      text: TextSpan(
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Colors.black,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: "${data['fromUsername']}  ",
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-
-                          TextSpan(
-                            text: getText(data['type']),
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    subtitle: Text(
-                      timeAgo((data['createdAt'] as Timestamp).toDate()),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-
-                    tileColor: data['isRead'] == true
-                        ? null
-                        : Colors.grey.withOpacity(0.1),
-
-                    onTap: () async {
-                      final user = FirebaseAuth.instance.currentUser;
-
-                      // Mark as read
+                  return Dismissible(
+                    key: Key(doc.id),
+                    direction: DismissDirection.endToStart,
+                    confirmDismiss: (_) async {
                       await FirebaseFirestore.instance
                           .collection('notifications')
-                          .doc(user!.uid)
+                          .doc(user.uid)
                           .collection('items')
-                          .doc(docs[index].id)
-                          .update({'isRead': true});
+                          .doc(doc.id)
+                          .delete();
 
-                      final type = data['type'];
-
-                      if (type == 'follow') {
-                        // go to user profile
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                UserProfileScreen(userId: data['fromUserId']),
-                          ),
-                        );
-                      } else {
-                        // like / comment -> go to post
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PostDetailScreen(postId: data['postId']),
-                          ),
-                        );
-                      }
+                      return true;
                     },
-                  ),
-                ),
-              );
-            },
-          );
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      color: Colors.red,
+                      child: const Icon(Icons.delete, color: Colors.white),
+                    ),
+                    child: FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(data['fromUserId'])
+                          .get(),
+                      builder: (context, userSnap) {
+                        final userData =
+                            userSnap.hasData && userSnap.data!.data() != null
+                            ? userSnap.data!.data() as Map<String, dynamic>
+                            : null;
+
+                        final isRead = data['isRead'] == true;
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isRead
+                                ? Colors.white
+                                : const Color(0xFFF3E8FF),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              if (isRead)
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                            ],
+                          ),
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            leading:
+                                userData != null &&
+                                    (userData['photoUrl'] != null &&
+                                        userData['photoUrl'] != '')
+                                ? CircleAvatar(
+                                    radius: 22,
+                                    backgroundImage: NetworkImage(
+                                      userData['photoUrl'],
+                                    ),
+                                  )
+                                : Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.04),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(child: getIcon(data['type'])),
+                                  ),
+                            title: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.black,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: "${data['fromUsername']} ",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text: getText(data['type']),
+                                    style: TextStyle(
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            subtitle: Text(
+                              timeAgo(
+                                (data['createdAt'] as Timestamp).toDate(),
+                              ),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            onTap: () async {
+                              final me = FirebaseAuth.instance.currentUser;
+
+                              // mark read
+                              await FirebaseFirestore.instance
+                                  .collection('notifications')
+                                  .doc(me!.uid)
+                                  .collection('items')
+                                  .doc(doc.id)
+                                  .update({'isRead': true});
+
+                              final type = data['type'];
+
+                              if (type == 'follow') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => UserProfileScreen(
+                                      userId: data['fromUserId'],
+                                    ),
+                                  ),
+                                );
+                              } else if (type == 'comment') {
+                                final postDoc = await FirebaseFirestore.instance
+                                    .collection('posts')
+                                    .doc(data['postId'])
+                                    .get();
+                                final postOwnerId = postDoc.data() != null
+                                    ? (postDoc.data()
+                                          as Map<String, dynamic>)['userId']
+                                    : '';
+
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => CommentScreen(
+                                      postId: data['postId'],
+                                      postOwnerId: postOwnerId ?? '',
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PostDetailScreen(
+                                      postId: data['postId'],
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                }).toList(),
+              ],
+            );
+          }
+
+          final sections = <Widget>[];
+          if (today.isNotEmpty) sections.add(buildSection('Today', today));
+          if (yesterday.isNotEmpty)
+            sections.add(buildSection('Yesterday', yesterday));
+          if (earlier.isNotEmpty)
+            sections.add(buildSection('Earlier', earlier));
+
+          return ListView(children: sections);
         },
       ),
     );

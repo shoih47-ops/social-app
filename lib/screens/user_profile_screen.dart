@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../utils/route_observer.dart';
 
 import '../services/follow_service.dart';
 import '../services/profile_background_video_service.dart';
@@ -14,14 +15,21 @@ import '../widgets/profile/user_profile_posts_grid.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
+  final ValueNotifier<int>? indexNotifier;
+  final int tabIndex;
 
-  const UserProfileScreen({super.key, required this.userId});
+  const UserProfileScreen({
+    super.key,
+    required this.userId,
+    this.indexNotifier,
+    this.tabIndex = 3,
+  });
 
   @override
   State<UserProfileScreen> createState() => _UserProfileScreenState();
 }
 
-class _UserProfileScreenState extends State<UserProfileScreen> {
+class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
   String username = "";
   String bio = "";
   String? photoUrl;
@@ -36,6 +44,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ProfileBackgroundVideoService();
   bool isFollowing = false;
   StreamSubscription<DocumentSnapshot>? _currentUserSub;
+  bool _videoLoaded = false;
+  VoidCallback? _indexListener;
 
   void _notify() {
     if (mounted) setState(() {});
@@ -66,13 +76,73 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             }
           });
     }
+
+    // Listen to tab index changes to lazily load/play/pause the background
+    // video only when this tab is active.
+    if (widget.indexNotifier != null) {
+      _indexListener = () {
+        final isActive = widget.indexNotifier!.value == widget.tabIndex;
+        if (isActive) {
+          if (!_videoLoaded) {
+            _backgroundVideoService
+                .loadSavedVideo(widget.userId, onVideoUpdated: _notify)
+                .then((_) {
+                  _videoLoaded = true;
+                  if (_backgroundVideoService.backgroundVideoUrl.isNotEmpty) {
+                    setState(() {
+                      backgroundVideoUrl =
+                          _backgroundVideoService.backgroundVideoUrl;
+                      coverType = 'video';
+                      coverUrl = backgroundVideoUrl;
+                    });
+                  }
+                });
+          } else {
+            _backgroundVideoService.controller?.play();
+          }
+        } else {
+          _backgroundVideoService.controller?.pause();
+        }
+      };
+      widget.indexNotifier!.addListener(_indexListener!);
+      // Trigger initial state
+      _indexListener!();
+    }
   }
 
   @override
   void dispose() {
+    if (widget.indexNotifier != null && _indexListener != null) {
+      widget.indexNotifier!.removeListener(_indexListener!);
+    }
+    try {
+      routeObserver.unsubscribe(this);
+    } catch (_) {}
     _backgroundVideoService.dispose();
     _currentUserSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    _backgroundVideoService.controller?.pause();
+  }
+
+  @override
+  void didPopNext() {
+    final isActive = widget.indexNotifier == null
+        ? true
+        : widget.indexNotifier!.value == widget.tabIndex;
+    if (isActive) _backgroundVideoService.controller?.play();
   }
 
   Future<void> loadUserData() async {
@@ -97,6 +167,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (rawData != null) {
         final data = rawData;
 
+        await _backgroundVideoService.loadFromUserData(data);
+
         username = data['username'] ?? '';
         bio = data['bio'] ?? '';
         photoUrl = data['photoUrl'] as String?;
@@ -115,16 +187,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       }
     }
 
-    await _backgroundVideoService.loadSavedVideo(
-      widget.userId,
-      onVideoUpdated: _notify,
-    );
-
-    if (_backgroundVideoService.backgroundVideoUrl.isNotEmpty) {
-      backgroundVideoUrl = _backgroundVideoService.backgroundVideoUrl;
-      coverType = 'video';
-      coverUrl = backgroundVideoUrl;
-    }
+    // Background video is loaded lazily when this screen becomes active
+    // (via the index notifier). Do not auto-load here to avoid playback on
+    // app startup.
 
     final myDoc = await FirebaseFirestore.instance
         .collection('users')
@@ -217,10 +282,58 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ],
           ),
         ),
-        coverActions: ProfileCoverActions(
-          hasVideo: videoService.hasVideo,
-          backgroundVideoUrl: videoUrl,
-          onFullscreen: _openFullscreenVideo,
+        coverActions: SizedBox(
+          height: 260,
+          width: double.infinity,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    // Open existing fullscreen viewer for video if available.
+                    if (videoUrl.isNotEmpty) {
+                      _openFullscreenVideo();
+                      return;
+                    }
+
+                    // Otherwise, if there's a cover image, show it full-screen.
+                    if (coverUrl.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => Scaffold(
+                            backgroundColor: Colors.black,
+                            body: SafeArea(
+                              top: false,
+                              bottom: false,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () => Navigator.of(context).pop(),
+                                child: Center(
+                                  child: InteractiveViewer(
+                                    child: Image.network(
+                                      coverUrl,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+              ProfileCoverActions(
+                hasVideo: videoService.hasVideo,
+                backgroundVideoUrl: videoUrl,
+                // Intentionally not passing `onFullscreen` to remove the fullscreen button.
+              ),
+            ],
+          ),
         ),
       ),
     );

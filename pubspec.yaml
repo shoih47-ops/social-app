@@ -50,6 +50,7 @@ dependencies:
   video_compress: ^3.1.2
   shimmer: ^3.0.0
   flutter_animate: ^4.5.0
+  firebase_messaging: ^15.2.10
   
 
 dev_dependencies:

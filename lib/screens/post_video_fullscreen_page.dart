@@ -11,6 +11,9 @@ import '../widgets/like_button.dart';
 import '../widgets/comment_button.dart';
 import '../utils/time_ago.dart';
 
+import '../screens/profile_screen.dart';
+import '../screens/user_profile_screen.dart';
+
 class PostVideoFullscreenPage extends StatefulWidget {
   final Post post;
 
@@ -29,13 +32,8 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   Duration _duration = Duration.zero;
   bool _isMuted = false;
   late final AnimationController _heartController;
-  late final Animation<double> _heartScale;
-  late final Animation<double> _heartOpacity;
-  // vertical drag to dismiss
-  double _dragOffset = 0.0;
   late final AnimationController _dismissController;
-  Animation<double>? _dismissAnimation;
-  bool _isDismissing = false;
+  // vertical drag to dismiss (not used currently)
 
   void _onVideoChanged() {
     if (!mounted) return;
@@ -54,15 +52,6 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
     _heartController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
-    );
-    _heartScale = Tween<double>(begin: 0.6, end: 1.0).animate(
-      CurvedAnimation(parent: _heartController, curve: Curves.elasticOut),
-    );
-    _heartOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _heartController,
-        curve: const Interval(0.0, 0.4),
-      ),
     );
     _dismissController = AnimationController(
       vsync: this,
@@ -230,7 +219,7 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
               // Social buttons (right)
               Positioned(
                 right: 12,
-                bottom: 120,
+                bottom: 220,
                 child: SafeArea(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -248,18 +237,12 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: CommentButton(
-                          postId: widget.post.id,
-                          postOwnerId: widget.post.userId,
-                          iconColor: Colors.white,
-                          textColor: Colors.white70,
-                        ),
+
+                      CommentButton(
+                        postId: widget.post.id,
+                        postOwnerId: widget.post.userId,
+                        iconColor: Colors.white,
+                        textColor: Colors.white70,
                       ),
                     ],
                   ),
@@ -292,7 +275,7 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
               // Caption (bottom-left)
               Positioned(
                 left: 16,
-                bottom: 24,
+                bottom: 130,
                 child: SafeArea(
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
@@ -302,28 +285,76 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          widget.post.username.isNotEmpty
-                              ? widget.post.username
-                              : 'user',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(widget.post.userId)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const SizedBox();
+                            }
+                            final userData =
+                                snapshot.data!.data() as Map<String, dynamic>;
+                            return Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    final currentUid =
+                                        FirebaseAuth.instance.currentUser!.uid;
+
+                                    if (widget.post.userId == currentUid) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              ProfileScreen(userId: currentUid),
+                                        ),
+                                      );
+                                    } else {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => UserProfileScreen(
+                                            userId: widget.post.userId,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 14,
+                                        backgroundImage:
+                                            userData['photoUrl'] != null &&
+                                                userData['photoUrl'] != ''
+                                            ? NetworkImage(userData['photoUrl'])
+                                            : null,
+                                        child:
+                                            (userData['photoUrl'] == null ||
+                                                userData['photoUrl'] == '')
+                                            ? const Icon(Icons.person, size: 16)
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        userData['username'] ?? 'Unknown',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
-                        const SizedBox(height: 6),
-                        if (widget.post.text.isNotEmpty)
-                          Text(
-                            widget.post.text,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ),
-                        const SizedBox(height: 6),
+
+                        const SizedBox(height: 4),
                         Text(
                           timeAgo(widget.post.createdAt),
                           style: const TextStyle(

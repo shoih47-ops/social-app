@@ -165,8 +165,8 @@ class ProfileCoverActions extends StatelessWidget {
         children: [
           if (onPickVideo != null)
             Positioned(
-              bottom: 16,
-              right: 16,
+              bottom: 70,
+              right: 70,
               child: _CoverActionButton(
                 onTap: isUploading ? () {} : onPickVideo!,
                 child: isUploading
