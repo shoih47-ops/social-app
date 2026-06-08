@@ -52,6 +52,12 @@ class PostService {
   }
 
   static Future<void> deletePost(String postId) async {
-    await _db.collection('posts').doc(postId).delete();
+    try {
+      await _db.collection('posts').doc(postId).delete();
+
+      print('POST DELETED');
+    } catch (e) {
+      print('DELETE ERROR: $e');
+    }
   }
 }

@@ -4,6 +4,8 @@ import 'package:video_player/video_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/notification_service.dart';
+import '../services/post_service.dart';
+import '../services/report_service.dart';
 import 'dart:async';
 
 import '../models/post.dart';
@@ -212,6 +214,92 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ),
+                  ),
+                ),
+              ),
+
+              // Popup menu (top-right): Delete for owner, Report for others
+              Positioned(
+                top: 12 + MediaQuery.of(context).padding.top,
+                right: 8,
+                child: SafeArea(
+                  child: StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(widget.post.userId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      // If user data not ready, still render a transparent menu placeholder
+                      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                      final isOwner =
+                          currentUid != null &&
+                          currentUid == widget.post.userId;
+
+                      return PopupMenuButton<String>(
+                        color: Colors.black54,
+                        icon: const Icon(Icons.more_vert, color: Colors.white),
+                        onSelected: (value) async {
+                          if (value == 'delete') {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete Post'),
+                                content: const Text(
+                                  'Are you sure you want to delete this post?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              if (mounted) Navigator.pop(context);
+                              await PostService.deletePost(widget.post.id);
+                            }
+                          } else if (value == 'report') {
+                            final cu = FirebaseAuth.instance.currentUser;
+                            if (cu != null) {
+                              await ReportService.reportPost(
+                                postId: widget.post.id,
+                                userId: cu.uid,
+                                reason: 'Inappropriate Content',
+                              );
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Post reported'),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        itemBuilder: (context) => isOwner
+                            ? [
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete Post'),
+                                ),
+                              ]
+                            : [
+                                const PopupMenuItem(
+                                  value: 'report',
+                                  child: Text('Report Post'),
+                                ),
+                              ],
+                      );
+                    },
                   ),
                 ),
               ),

@@ -212,12 +212,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               .snapshots(),
                           builder: (context, userSnapshot) {
                             if (!userSnapshot.hasData ||
-                                userSnapshot.data!.data() == null) {
+                                userSnapshot.data?.data() == null) {
                               return const SizedBox();
                             }
 
                             final userData =
-                                userSnapshot.data!.data()
+                                userSnapshot.data?.data()
                                     as Map<String, dynamic>;
 
                             final currentUid =
@@ -337,10 +337,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                         );
 
                                         if (confirm == true) {
+                                          print('DELETE ID: ${widget.postId}');
+                                          if (mounted) Navigator.pop(context);
                                           await PostService.deletePost(
                                             widget.postId,
                                           );
-                                          if (mounted) Navigator.pop(context);
                                         }
                                       }
                                     },
