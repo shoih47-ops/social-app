@@ -40,7 +40,23 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
   String coverUrl = '';
   bool _isUploadingCoverImage = false;
 
-  bool get _hasCoverImage => coverUrl.trim().isNotEmpty;
+  bool get _hasCoverImage => _isValidCoverImageUrl(coverUrl);
+
+  bool _isValidCoverImageUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return false;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+
+    final path = uri.path.toLowerCase();
+    if (path.contains('/image/upload')) return true;
+
+    return path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.png') ||
+        path.endsWith('.webp') ||
+        path.endsWith('.gif') ||
+        path.endsWith('.bmp');
+  }
 
   void _notify() {
     if (mounted) setState(() {});
@@ -185,29 +201,17 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white70),
+          if (_isUploadingCoverImage) ...[
+            const SizedBox(
+              height: 24,
+              width: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             ),
-            child: _isUploadingCoverImage
-                ? const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(
-                    Icons.photo_camera_outlined,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-          ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
+          ],
           const Text(
             '+ Add Cover Photo',
             style: TextStyle(
@@ -229,42 +233,18 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
     );
   }
 
-  Widget _buildCoverEditButton() {
-    return Material(
-      color: Colors.white,
-      elevation: 2,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: _isUploadingCoverImage ? null : _pickCoverImage,
-        customBorder: const CircleBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: _isUploadingCoverImage
-              ? SizedBox(
-                  height: 18,
-                  width: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.grey[700],
-                  ),
-                )
-              : Icon(
-                  Icons.photo_camera_outlined,
-                  size: 18,
-                  color: Colors.grey[800],
-                ),
-        ),
-      ),
-    );
-  }
-
   void _openCoverViewer() {
+    if (!_hasCoverImage) {
+      _pickCoverImage();
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => StatefulBuilder(
           builder: (context, setViewerState) {
-            final hasCoverImage = coverUrl.trim().isNotEmpty;
+            final hasCoverImage = _hasCoverImage;
 
             return Scaffold(
               backgroundColor: Colors.black,
@@ -424,12 +404,6 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
                   right: 0,
                   top: 70,
                   child: Center(child: _buildCoverPlaceholder()),
-                )
-              else
-                Positioned(
-                  right: 16,
-                  bottom: 78,
-                  child: _buildCoverEditButton(),
                 ),
             ],
           ),

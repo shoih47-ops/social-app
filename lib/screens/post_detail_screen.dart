@@ -424,320 +424,336 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
                         const SizedBox(height: 12),
 
-                        Expanded(
-                          child: StreamBuilder(
-                            stream: FirebaseFirestore.instance
-                                .collection('posts')
-                                .doc(widget.postId)
-                                .collection('comments')
-                                .orderBy('createdAt', descending: true)
-                                .snapshots(),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData) {
-                                return const SizedBox();
-                              }
+                        StreamBuilder(
+                          stream: FirebaseFirestore.instance
+                              .collection('posts')
+                              .doc(widget.postId)
+                              .collection('comments')
+                              .orderBy('createdAt', descending: true)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Center(
+                                  child: Text('Failed to load comments'),
+                                ),
+                              );
+                            }
 
-                              final comments = snapshot.data!.docs;
+                            if (!snapshot.hasData) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            }
 
-                              return ListView.builder(
-                                shrinkWrap: true,
-                                physics: NeverScrollableScrollPhysics(),
-                                itemCount: comments.length,
-                                itemBuilder: (context, index) {
-                                  final data = comments[index].data();
+                            final comments = snapshot.data!.docs;
 
-                                  final likes = List<String>.from(
-                                    data['likes'] ?? [],
-                                  );
+                            if (comments.isEmpty) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 24),
+                                child: Center(child: Text('No comments yet')),
+                              );
+                            }
 
-                                  return StreamBuilder<DocumentSnapshot>(
-                                    stream: FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(data['userId'])
-                                        .snapshots(),
-                                    builder: (context, userSnapshot) {
-                                      if (!userSnapshot.hasData) {
-                                        return const SizedBox();
-                                      }
+                            return ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: comments.length,
+                              itemBuilder: (context, index) {
+                                final data = comments[index].data();
 
-                                      final userData =
-                                          userSnapshot.data!.data()
-                                              as Map<String, dynamic>;
+                                final likes = List<String>.from(
+                                  data['likes'] ?? [],
+                                );
 
-                                      final currentUserId = FirebaseAuth
-                                          .instance
-                                          .currentUser!
-                                          .uid;
+                                return StreamBuilder<DocumentSnapshot>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(data['userId'])
+                                      .snapshots(),
+                                  builder: (context, userSnapshot) {
+                                    if (!userSnapshot.hasData) {
+                                      return const SizedBox();
+                                    }
 
-                                      final isliked = likes.contains(
-                                        currentUserId,
-                                      );
+                                    final userData =
+                                        userSnapshot.data!.data()
+                                            as Map<String, dynamic>;
 
-                                      final commentId = comments[index].id;
-                                      final show =
-                                          _showReplies[commentId] ?? false;
+                                    final currentUserId =
+                                        FirebaseAuth.instance.currentUser!.uid;
 
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 0,
-                                          vertical: 8,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Container(
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withOpacity(0.03),
-                                                    blurRadius: 6,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ],
-                                              ),
-                                              padding: const EdgeInsets.all(12),
-                                              child: CommentTile(
-                                                photoUrl:
-                                                    (userData['photoUrl'] !=
-                                                        null)
-                                                    ? userData['photoUrl']
-                                                    : '',
-                                                username:
-                                                    (userData['username'] !=
-                                                        null)
-                                                    ? userData['username']
-                                                    : 'Deleted User',
-                                                text: data['text'] ?? '',
-                                                userId: data['userId'] ?? '',
-                                                time: timeago.format(
-                                                  (data['createdAt']
-                                                          as Timestamp)
-                                                      .toDate(),
+                                    final isliked = likes.contains(
+                                      currentUserId,
+                                    );
+
+                                    final commentId = comments[index].id;
+                                    final show =
+                                        _showReplies[commentId] ?? false;
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 0,
+                                        vertical: 8,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.03),
+                                                  blurRadius: 6,
+                                                  offset: const Offset(0, 2),
                                                 ),
-                                                onReply: () {
-                                                  showReplyDialog(
-                                                    commentId,
-                                                    data['userId'],
-                                                    userData['username'] ?? '',
-                                                  );
-                                                },
-                                                isLiked: isliked,
-                                                likeCount: likes.length,
-                                                onLike: () async {
-                                                  final ref = FirebaseFirestore
-                                                      .instance
-                                                      .collection('posts')
-                                                      .doc(widget.postId)
-                                                      .collection('comments')
-                                                      .doc(commentId);
-
-                                                  if (isliked) {
-                                                    await ref.update({
-                                                      'likes':
-                                                          FieldValue.arrayRemove(
-                                                            [currentUserId],
-                                                          ),
-                                                    });
-                                                  } else {
-                                                    await ref.update({
-                                                      'likes':
-                                                          FieldValue.arrayUnion(
-                                                            [currentUserId],
-                                                          ),
-                                                    });
-                                                  }
-                                                },
-                                                onDelete: () async {
-                                                  await FirebaseFirestore
-                                                      .instance
-                                                      .collection('posts')
-                                                      .doc(widget.postId)
-                                                      .collection('comments')
-                                                      .doc(commentId)
-                                                      .delete();
-                                                },
-                                              ),
+                                              ],
                                             ),
+                                            padding: const EdgeInsets.all(12),
+                                            child: CommentTile(
+                                              photoUrl:
+                                                  (userData['photoUrl'] != null)
+                                                  ? userData['photoUrl']
+                                                  : '',
+                                              username:
+                                                  (userData['username'] != null)
+                                                  ? userData['username']
+                                                  : 'Deleted User',
+                                              text: data['text'] ?? '',
+                                              userId: data['userId'] ?? '',
+                                              time: timeago.format(
+                                                (data['createdAt'] as Timestamp)
+                                                    .toDate(),
+                                              ),
+                                              onReply: () {
+                                                showReplyDialog(
+                                                  commentId,
+                                                  data['userId'],
+                                                  userData['username'] ?? '',
+                                                );
+                                              },
+                                              isLiked: isliked,
+                                              likeCount: likes.length,
+                                              onLike: () async {
+                                                final ref = FirebaseFirestore
+                                                    .instance
+                                                    .collection('posts')
+                                                    .doc(widget.postId)
+                                                    .collection('comments')
+                                                    .doc(commentId);
 
-                                            const SizedBox(height: 4),
-
-                                            StreamBuilder(
-                                              stream: FirebaseFirestore.instance
-                                                  .collection('posts')
-                                                  .doc(widget.postId)
-                                                  .collection('comments')
-                                                  .doc(commentId)
-                                                  .collection('replies')
-                                                  .orderBy('createdAt')
-                                                  .snapshots(),
-                                              builder: (context, replySnapshot) {
-                                                if (!replySnapshot.hasData) {
-                                                  return const SizedBox();
+                                                if (isliked) {
+                                                  await ref.update({
+                                                    'likes':
+                                                        FieldValue.arrayRemove([
+                                                          currentUserId,
+                                                        ]),
+                                                  });
+                                                } else {
+                                                  await ref.update({
+                                                    'likes':
+                                                        FieldValue.arrayUnion([
+                                                          currentUserId,
+                                                        ]),
+                                                  });
                                                 }
+                                              },
+                                              onDelete: () async {
+                                                await FirebaseFirestore.instance
+                                                    .collection('posts')
+                                                    .doc(widget.postId)
+                                                    .collection('comments')
+                                                    .doc(commentId)
+                                                    .delete();
+                                              },
+                                            ),
+                                          ),
 
-                                                final replies =
-                                                    replySnapshot.data!.docs;
+                                          const SizedBox(height: 4),
 
-                                                return Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    if (replies.isNotEmpty)
-                                                      TextButton(
-                                                        style: TextButton.styleFrom(
-                                                          padding:
-                                                              EdgeInsets.zero,
-                                                          minimumSize:
-                                                              const Size(0, 0),
-                                                          tapTargetSize:
-                                                              MaterialTapTargetSize
-                                                                  .shrinkWrap,
-                                                          alignment: Alignment
-                                                              .centerLeft,
+                                          StreamBuilder(
+                                            stream: FirebaseFirestore.instance
+                                                .collection('posts')
+                                                .doc(widget.postId)
+                                                .collection('comments')
+                                                .doc(commentId)
+                                                .collection('replies')
+                                                .orderBy('createdAt')
+                                                .snapshots(),
+                                            builder: (context, replySnapshot) {
+                                              if (!replySnapshot.hasData) {
+                                                return const SizedBox();
+                                              }
+
+                                              final replies =
+                                                  replySnapshot.data!.docs;
+
+                                              return Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  if (replies.isNotEmpty)
+                                                    TextButton(
+                                                      style: TextButton.styleFrom(
+                                                        padding:
+                                                            EdgeInsets.zero,
+                                                        minimumSize: const Size(
+                                                          0,
+                                                          0,
                                                         ),
-                                                        onPressed: () {
-                                                          setState(() {
-                                                            _showReplies[commentId] =
-                                                                !(_showReplies[commentId] ??
-                                                                    false);
-                                                          });
-                                                        },
-                                                        child: Padding(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 6,
-                                                                vertical: 2,
-                                                              ),
-                                                          child: Text(
-                                                            show
-                                                                ? 'Hide replies'
-                                                                : 'View replies (${replies.length})',
-                                                            style: TextStyle(
-                                                              color: Colors
-                                                                  .grey
-                                                                  .shade500,
-                                                              fontSize: 11,
+                                                        tapTargetSize:
+                                                            MaterialTapTargetSize
+                                                                .shrinkWrap,
+                                                        alignment: Alignment
+                                                            .centerLeft,
+                                                      ),
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          _showReplies[commentId] =
+                                                              !(_showReplies[commentId] ??
+                                                                  false);
+                                                        });
+                                                      },
+                                                      child: Padding(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 6,
+                                                              vertical: 2,
                                                             ),
+                                                        child: Text(
+                                                          show
+                                                              ? 'Hide replies'
+                                                              : 'View replies (${replies.length})',
+                                                          style: TextStyle(
+                                                            color: Colors
+                                                                .grey
+                                                                .shade500,
+                                                            fontSize: 11,
                                                           ),
                                                         ),
                                                       ),
+                                                    ),
 
-                                                    if (show)
-                                                      Container(
-                                                        margin:
-                                                            const EdgeInsets.only(
-                                                              left: 56,
-                                                            ),
-                                                        child: Row(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: [
-                                                            Container(
-                                                              width: 3,
-                                                              height: 48,
+                                                  if (show)
+                                                    Container(
+                                                      margin:
+                                                          const EdgeInsets.only(
+                                                            left: 56,
+                                                          ),
+                                                      child: Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Container(
+                                                            width: 3,
+                                                            height: 48,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                                  color: Colors
+                                                                      .grey
+                                                                      .shade300,
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        2,
+                                                                      ),
+                                                                ),
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 12,
+                                                          ),
+                                                          Expanded(
+                                                            child: Container(
+                                                              padding:
+                                                                  const EdgeInsets.symmetric(
+                                                                    vertical: 6,
+                                                                    horizontal:
+                                                                        0,
+                                                                  ),
                                                               decoration: BoxDecoration(
                                                                 color: Colors
                                                                     .grey
-                                                                    .shade300,
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      2,
-                                                                    ),
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 12,
-                                                            ),
-                                                            Expanded(
-                                                              child: Container(
-                                                                padding:
-                                                                    const EdgeInsets.symmetric(
-                                                                      vertical:
-                                                                          6,
-                                                                      horizontal:
-                                                                          0,
-                                                                    ),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors
-                                                                      .grey
-                                                                      .shade50,
-                                                                  borderRadius: const BorderRadius.only(
-                                                                    topRight:
-                                                                        Radius.circular(
-                                                                          8,
-                                                                        ),
-                                                                    bottomRight:
-                                                                        Radius.circular(
-                                                                          8,
-                                                                        ),
-                                                                  ),
-                                                                ),
-                                                                child: Column(
-                                                                  children: replies.map((
-                                                                    reply,
-                                                                  ) {
-                                                                    final replyData =
-                                                                        reply
-                                                                            .data();
-                                                                    return Padding(
-                                                                      padding: const EdgeInsets.only(
-                                                                        bottom:
-                                                                            4,
+                                                                    .shade50,
+                                                                borderRadius: const BorderRadius.only(
+                                                                  topRight:
+                                                                      Radius.circular(
+                                                                        8,
                                                                       ),
-                                                                      child: ReplyTile(
-                                                                        replyData:
-                                                                            replyData,
-                                                                        onDelete: () async {
-                                                                          await FirebaseFirestore
-                                                                              .instance
-                                                                              .collection(
-                                                                                'posts',
-                                                                              )
-                                                                              .doc(
-                                                                                widget.postId,
-                                                                              )
-                                                                              .collection(
-                                                                                'comments',
-                                                                              )
-                                                                              .doc(
-                                                                                commentId,
-                                                                              )
-                                                                              .collection(
-                                                                                'replies',
-                                                                              )
-                                                                              .doc(
-                                                                                reply.id,
-                                                                              )
-                                                                              .delete();
-                                                                        },
+                                                                  bottomRight:
+                                                                      Radius.circular(
+                                                                        8,
                                                                       ),
-                                                                    );
-                                                                  }).toList(),
                                                                 ),
                                                               ),
+                                                              child: Column(
+                                                                children: replies.map((
+                                                                  reply,
+                                                                ) {
+                                                                  final replyData =
+                                                                      reply
+                                                                          .data();
+                                                                  return Padding(
+                                                                    padding:
+                                                                        const EdgeInsets.only(
+                                                                          bottom:
+                                                                              4,
+                                                                        ),
+                                                                    child: ReplyTile(
+                                                                      replyData:
+                                                                          replyData,
+                                                                      onDelete: () async {
+                                                                        await FirebaseFirestore
+                                                                            .instance
+                                                                            .collection(
+                                                                              'posts',
+                                                                            )
+                                                                            .doc(
+                                                                              widget.postId,
+                                                                            )
+                                                                            .collection(
+                                                                              'comments',
+                                                                            )
+                                                                            .doc(
+                                                                              commentId,
+                                                                            )
+                                                                            .collection(
+                                                                              'replies',
+                                                                            )
+                                                                            .doc(
+                                                                              reply.id,
+                                                                            )
+                                                                            .delete();
+                                                                      },
+                                                                    ),
+                                                                  );
+                                                                }).toList(),
+                                                              ),
                                                             ),
-                                                          ],
-                                                        ),
+                                                          ),
+                                                        ],
                                                       ),
-                                                  ],
-                                                );
-                                              },
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
-                              );
-                            },
-                          ),
+                                                    ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                          },
                         ),
 
                         const SizedBox(height: 20),
