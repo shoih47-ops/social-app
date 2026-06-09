@@ -41,7 +41,6 @@ class _CreateUsernameScreenState extends State<CreateUsernameScreen> {
       'bio': '',
       'photoUrl': '',
       'coverUrl': '',
-      'coverType': 'image',
       'email': FirebaseAuth.instance.currentUser!.email,
       'followers': [],
       'following': [],
