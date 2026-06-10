@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/user_profile_screen.dart';
@@ -129,12 +128,19 @@ class CommentTile extends StatelessWidget {
             ),
           ),
 
-          userId == FirebaseAuth.instance.currentUser!.uid
-              ? GestureDetector(
-                  onTap: onDelete,
-                  child: const Icon(Icons.delete, size: 18, color: Colors.grey),
-                )
-              : const SizedBox(),
+          if (userId == FirebaseAuth.instance.currentUser!.uid)
+            PopupMenuButton<String>(
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+              onSelected: (value) {
+                if (value == 'delete') {
+                  onDelete();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'delete', child: Text('Delete Comment')),
+              ],
+            ),
 
           Padding(
             padding: const EdgeInsets.only(top: 6),

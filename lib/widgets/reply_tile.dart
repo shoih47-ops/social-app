@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/services.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:social_app/screens/user_profile_screen.dart';
 import 'package:social_app/screens/profile_screen.dart';
@@ -153,16 +152,23 @@ class ReplyTile extends StatelessWidget {
                 ),
               ),
 
-              replyData['userId'] == FirebaseAuth.instance.currentUser!.uid
-                  ? GestureDetector(
-                      onTap: onDelete,
-                      child: const Icon(
-                        Icons.delete,
-                        size: 16,
-                        color: Colors.grey,
-                      ),
-                    )
-                  : const SizedBox(),
+              if (replyData['userId'] == FirebaseAuth.instance.currentUser!.uid)
+                PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.more_vert,
+                    size: 16,
+                    color: Colors.grey,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'delete') {
+                      onDelete();
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'delete', child: Text('Delete Reply')),
+                  ],
+                ),
             ],
           ),
         );

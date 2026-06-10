@@ -6,6 +6,7 @@ import 'feed_screen.dart';
 import 'create_post_screen.dart';
 import 'notification_screen.dart';
 import 'profile_screen.dart';
+import '../services/fcm_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    FcmService.instance.syncTokenForCurrentUser();
     _currentIndexNotifier = ValueNotifier<int>(currentIndex);
     _screens = [
       const FeedScreen(),
