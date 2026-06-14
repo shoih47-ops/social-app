@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:timeago/timeago.dart' as timeago;
 import '../services/notification_service.dart';
+import '../utils/time_ago.dart';
 import '../widgets/comment_tile.dart';
 import '../widgets/reply_tile.dart';
 
@@ -45,7 +45,7 @@ class _CommentScreenState extends State<CommentScreen> {
           "username": userData['username'],
           "photoUrl": userData['photoUrl'],
           "text": commentController.text,
-          "createdAt": Timestamp.now(),
+          "createdAt": FieldValue.serverTimestamp(),
           "likes": [],
         });
 
@@ -152,7 +152,7 @@ class _CommentScreenState extends State<CommentScreen> {
           'userId': user.uid,
           'username': userData['username'],
           'photoUrl': userData['photoUrl'],
-          'createdAt': Timestamp.now(),
+          'createdAt': FieldValue.serverTimestamp(),
         });
 
     if (commentOwnerId != user.uid) {
@@ -167,7 +167,7 @@ class _CommentScreenState extends State<CommentScreen> {
             'isRead': false,
             'postId': widget.postId,
             'text': text,
-            'createdAt': Timestamp.now(),
+            'createdAt': FieldValue.serverTimestamp(),
           });
     }
   }
@@ -248,8 +248,10 @@ class _CommentScreenState extends State<CommentScreen> {
                                   username: user['username'] ?? 'Unknown',
                                   text: data['text'] ?? '',
                                   userId: data['userId'],
-                                  time: timeago.format(
-                                    (data['createdAt'] as Timestamp).toDate(),
+                                  time: TimeAgoHelper.format(
+                                    TimeAgoHelper.fromFirestore(
+                                      data['createdAt'],
+                                    ),
                                   ),
                                   onReply: () {
                                     showReplyDialog(

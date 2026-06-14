@@ -21,7 +21,7 @@ Future<void> sendNotification({
           'fromUserId': fromUserId,
           'fromUsername': fromUsername,
           'postId': postId,
-          'createdAt': Timestamp.now(),
+          'createdAt': FieldValue.serverTimestamp(),
           'isRead': false,
         });
 

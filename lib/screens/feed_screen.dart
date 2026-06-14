@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../models/post.dart';
+import '../services/post_service.dart';
+import '../utils/time_ago.dart';
 import '../widgets/post_card.dart';
 
 import 'create_post_screen.dart';
@@ -117,22 +119,39 @@ class FeedScreen extends StatelessWidget {
                     type: data['type'] ?? '',
                     comments: List.from(data['comments'] ?? []),
                     likedBy: List<String>.from(data['likes'] ?? []),
-                    createdAt: (data['createdAt'] as Timestamp).toDate(),
+                    createdAt: TimeAgoHelper.fromFirestore(data['createdAt']),
                     userId: data['userId'] ?? '',
                     content: data['content'] ?? '',
                     username: data['username'] ?? 'user',
                     userPhoto: data['photoUrl'] ?? '',
+                    mood: data['mood'] ?? '',
+                    category: data['category'] ?? '',
                   );
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 0,
-                      vertical: 0,
-                    ),
-                    child: PostCard(post: post, userData: data)
-                        .animate()
-                        .fadeIn(duration: 400.ms)
-                        .slideY(begin: 0.05, end: 0),
+                  return ValueListenableBuilder<Set<String>>(
+                    valueListenable: PostService.deletingVideoPostIds,
+                    builder: (context, deletingVideoPostIds, _) {
+                      if (post.type == 'video' &&
+                          deletingVideoPostIds.contains(post.id)) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 0,
+                          vertical: 0,
+                        ),
+                        child:
+                            PostCard(
+                                  key: ValueKey(post.id),
+                                  post: post,
+                                  userData: data,
+                                )
+                                .animate()
+                                .fadeIn(duration: 400.ms)
+                                .slideY(begin: 0.05, end: 0),
+                      );
+                    },
                   );
                 },
               ),

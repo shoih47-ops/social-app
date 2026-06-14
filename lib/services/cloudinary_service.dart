@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,7 +9,10 @@ class CloudinaryService {
   static const String _cloudName = 'ddaducxab';
   static const String _uploadPreset = 'social_app';
 
-  static Future<String> uploadImage(File imageFile) async {
+  static Future<String> uploadImage(
+    File imageFile, {
+    void Function(double progress)? onProgress,
+  }) async {
     final url = Uri.parse(
       'https://api.cloudinary.com/v1_1/$_cloudName/image/upload',
     );
@@ -16,7 +20,7 @@ class CloudinaryService {
     final request = http.MultipartRequest('POST', url);
     request.fields['upload_preset'] = _uploadPreset;
     request.files.add(
-      await http.MultipartFile.fromPath('file', imageFile.path),
+      await _multipartFileWithProgress(imageFile, onProgress: onProgress),
     );
 
     final response = await request.send();
@@ -31,7 +35,10 @@ class CloudinaryService {
   }
 
   /// Uploads a video to Cloudinary. Applies auto compression for large files.
-  static Future<String> uploadVideo(File videoFile) async {
+  static Future<String> uploadVideo(
+    File videoFile, {
+    void Function(double progress)? onProgress,
+  }) async {
     final url = Uri.parse(
       'https://api.cloudinary.com/v1_1/$_cloudName/video/upload',
     );
@@ -62,7 +69,10 @@ class CloudinaryService {
       }
 
       request.files.add(
-        await http.MultipartFile.fromPath('file', compressedFile.path),
+        await _multipartFileWithProgress(
+          compressedFile,
+          onProgress: onProgress,
+        ),
       );
 
       final response = await request.send();
@@ -82,15 +92,47 @@ class CloudinaryService {
   }
 
   /// Upload bytes as an image by writing to a temp file and reusing uploadImage.
-  static Future<String> uploadBytesAsImage(List<int> bytes) async {
+  static Future<String> uploadBytesAsImage(
+    List<int> bytes, {
+    void Function(double progress)? onProgress,
+  }) async {
     final tmp = await Directory.systemTemp.createTemp('thumb');
     final file = File('${tmp.path}/thumb.jpg');
     await file.writeAsBytes(bytes);
-    final url = await uploadImage(file);
+    final url = await uploadImage(file, onProgress: onProgress);
     try {
       await file.delete();
       await tmp.delete();
     } catch (_) {}
     return url;
+  }
+
+  static Future<http.MultipartFile> _multipartFileWithProgress(
+    File file, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final length = await file.length();
+    var uploaded = 0;
+
+    final stream = file.openRead().transform(
+      StreamTransformer<List<int>, List<int>>.fromHandlers(
+        handleData: (data, sink) {
+          uploaded += data.length;
+          if (length > 0) {
+            onProgress?.call((uploaded / length).clamp(0, 1).toDouble());
+          }
+          sink.add(data);
+        },
+      ),
+    );
+
+    return http.MultipartFile(
+      'file',
+      stream,
+      length,
+      filename: file.uri.pathSegments.isNotEmpty
+          ? file.uri.pathSegments.last
+          : 'upload',
+    );
   }
 }

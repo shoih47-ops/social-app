@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'post_detail_screen.dart';
+import 'post_video_fullscreen_page.dart';
+import '../models/post.dart';
 import '../utils/time_ago.dart';
 import 'comment_screen.dart';
 
@@ -88,8 +90,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
           for (final d in docs) {
             final data = d.data() as Map<String, dynamic>;
-            final ts = data['createdAt'] as Timestamp?;
-            final date = ts != null ? ts.toDate() : now;
+            final date = TimeAgoHelper.fromFirestore(
+              data['createdAt'],
+            ).toDate();
             final diff = DateTime(
               now.year,
               now.month,
@@ -222,8 +225,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               ),
                             ),
                             subtitle: Text(
-                              timeAgo(
-                                (data['createdAt'] as Timestamp).toDate(),
+                              TimeAgoHelper.format(
+                                TimeAgoHelper.fromFirestore(data['createdAt']),
                               ),
                               style: TextStyle(
                                 fontSize: 13,
@@ -257,6 +260,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     .collection('posts')
                                     .doc(data['postId'])
                                     .get();
+                                if (postDoc.exists &&
+                                    (postDoc.data()
+                                            as Map<String, dynamic>)['type'] ==
+                                        'video') {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PostVideoFullscreenPage(
+                                        post: Post.fromDocument(postDoc),
+                                        openComments: true,
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
                                 final postOwnerId = postDoc.data() != null
                                     ? (postDoc.data()
                                           as Map<String, dynamic>)['userId']
@@ -272,6 +290,31 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                   ),
                                 );
                               } else {
+                                if (type == 'like' || type == 'reply') {
+                                  final postDoc = await FirebaseFirestore
+                                      .instance
+                                      .collection('posts')
+                                      .doc(data['postId'])
+                                      .get();
+                                  if (postDoc.exists &&
+                                      (postDoc.data()
+                                              as Map<
+                                                String,
+                                                dynamic
+                                              >)['type'] ==
+                                          'video') {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => PostVideoFullscreenPage(
+                                          post: Post.fromDocument(postDoc),
+                                          openComments: type == 'reply',
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                }
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(

@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../utils/route_observer.dart';
+import 'life_journey_details_screen.dart';
 
 import '../services/follow_service.dart';
+import '../widgets/profile/profile_about_card.dart';
+import '../widgets/profile/profile_life_journey_card.dart';
 import '../widgets/profile/profile_screen_layout.dart';
 import '../widgets/profile/user_profile_header.dart';
 import '../widgets/profile/user_profile_stats.dart';
@@ -31,6 +34,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
   String bio = "";
   String? photoUrl;
   String coverUrl = '';
+  String? work;
+  String? family;
+  String? goal;
+  String? interests;
+  String? location;
+  String? relationship;
+  String? birthday;
+  String? lifeQuote;
+  List<Map<String, dynamic>> lifeJourney = [];
 
   String currentUsername = "";
 
@@ -118,6 +130,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
         username = data['username'] ?? '';
         bio = data['bio'] ?? '';
         photoUrl = data['photoUrl'] as String?;
+        work = _optionalProfileText(data, 'work');
+        family = _optionalProfileText(data, 'family');
+        goal = _optionalProfileText(data, 'goal');
+        interests = _optionalProfileText(data, 'interests');
+        location = _optionalProfileText(data, 'location');
+        relationship = _optionalProfileText(data, 'relationship');
+        birthday = _formatBirthday(data['birthday']);
+        lifeQuote = _optionalProfileText(data, 'lifeQuote');
+        lifeJourney = _parseLifeJourney(data['lifeJourney']);
         final rawCoverUrl = data['coverUrl'];
         coverUrl = rawCoverUrl is String ? rawCoverUrl.trim() : '';
       }
@@ -136,6 +157,50 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
     }
 
     _notify();
+  }
+
+  String? _optionalProfileText(Map<String, dynamic> data, String field) {
+    final value = data[field];
+    if (value is! String) return null;
+
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? _formatBirthday(dynamic value) {
+    if (value is! String || value.trim().isEmpty) return null;
+
+    final date = DateTime.tryParse(value.trim());
+    if (date == null) return null;
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  List<Map<String, dynamic>> _parseLifeJourney(dynamic value) {
+    if (value is! List) return [];
+
+    return value.whereType<Map>().map((item) {
+      return {
+        'year': (item['year'] ?? '').toString().trim(),
+        'title': (item['title'] ?? '').toString().trim(),
+      };
+    }).where((item) {
+      return item['year']!.isNotEmpty && item['title']!.isNotEmpty;
+    }).toList();
   }
 
   Future<void> _toggleFollow() async {
@@ -178,6 +243,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
                 photoUrl: photoUrl,
                 userName: username,
                 bio: bio,
+              ),
+              ProfileAboutCard(
+                work: work,
+                family: family,
+                goal: goal,
+                interests: interests,
+                location: location,
+                relationship: relationship,
+                birthday: birthday,
+                lifeQuote: lifeQuote,
+              ),
+              ProfileLifeJourneyCard(
+                lifeJourney: lifeJourney,
+                onViewAll: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LifeJourneyDetailsScreen(
+                        lifeJourney: lifeJourney,
+                      ),
+                    ),
+                  );
+                },
               ),
               UserProfileStats(userId: widget.userId),
               const SizedBox(height: 24),

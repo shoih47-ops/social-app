@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'home_screen.dart';
-import 'create_username_screen.dart';
+import 'edit_profile_screen.dart';
 
 class CreateAccountScreen extends StatefulWidget {
   const CreateAccountScreen({super.key});
@@ -30,6 +29,23 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
         password: passwordController.text.trim(),
       );
 
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'email': user.email ?? emailController.text.trim(),
+          'username': '',
+          'name': '',
+          'bio': '',
+          'photoUrl': '',
+          'coverUrl': '',
+          'followers': [],
+          'following': [],
+          'postsCount': 0,
+          'lifeJourney': [],
+        }, SetOptions(merge: true));
+      }
+
       // Save account
       final prefs = await SharedPreferences.getInstance();
       List<String> emails = prefs.getStringList('accounts') ?? [];
@@ -39,28 +55,14 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
         await prefs.setStringList('accounts', emails);
       }
 
-      final user = FirebaseAuth.instance.currentUser;
+      if (!mounted) return;
 
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .get();
-
-      if (!doc.exists ||
-          doc.data()?['username'] == null ||
-          doc.data()?['username'] == '') {
-        // Go to Create Username Screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => CreateUsernameScreen()),
-        );
-      } else {
-        // Go to Home
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => HomeScreen()),
-        );
-      }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const EditProfileScreen(completeOnSave: true),
+        ),
+      );
     } catch (e) {
       // Keep it minimal: show a snackbar for failure
       ScaffoldMessenger.of(
@@ -68,9 +70,11 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       ).showSnackBar(SnackBar(content: Text('Registration failed')));
     }
 
-    setState(() {
-      isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   @override

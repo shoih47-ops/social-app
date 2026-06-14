@@ -57,21 +57,12 @@ class _LoginScreenState extends State<LoginScreen> {
         password: passwordController.text.trim(),
       );
 
-      await checkUsernameAndGo();
-
       final user = FirebaseAuth.instance.currentUser;
-
-      final prefs = await SharedPreferences.getInstance();
-      List<String> accounts = prefs.getStringList('accounts') ?? [];
-
-      // uid|email|password|photoUrl
-      String accountData =
-          "${user!.uid}|${user.email}|${passwordController.text}|${user.photoURL ?? ''}";
-
-      if (!accounts.contains(accountData)) {
-        accounts.add(accountData);
-        await prefs.setStringList('accounts', accounts);
+      if (user != null) {
+        await _saveRecentAccount(user);
       }
+
+      await checkUsernameAndGo();
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -85,6 +76,39 @@ class _LoginScreenState extends State<LoginScreen> {
 
   List<Map<String, dynamic>> savedAccounts = [];
 
+  Future<void> _saveRecentAccount(User user) async {
+    final prefs = await SharedPreferences.getInstance();
+    final accounts = prefs.getStringList('accounts') ?? [];
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final data = doc.data();
+    final name = (data?['username'] ?? user.displayName ?? '').toString();
+    final photo = (data?['photoUrl'] ?? data?['photo'] ?? user.photoURL ?? '')
+        .toString();
+    final email = (user.email ?? emailController.text.trim()).trim();
+
+    if (email.isEmpty) return;
+
+    final accountData = '${user.uid}|$name|$email|$photo';
+    final updatedAccounts = accounts.where((account) {
+      final parts = account.split('|');
+      if (parts.length >= 2 && parts[1] == email) return false;
+      if (parts.length >= 3 && parts[2] == email) return false;
+      if (parts.isNotEmpty && parts[0] == user.uid) return false;
+      return true;
+    }).toList();
+
+    updatedAccounts.insert(0, accountData);
+
+    await prefs.setStringList(
+      'accounts',
+      updatedAccounts.take(5).toList(),
+    );
+  }
+
   void loadAccounts() async {
     final prefs = await SharedPreferences.getInstance();
     List<String> accounts = prefs.getStringList('accounts') ?? [];
@@ -92,18 +116,40 @@ class _LoginScreenState extends State<LoginScreen> {
     savedAccounts = [];
 
     for (String acc in accounts) {
+      if (savedAccounts.length >= 5) break;
+
       List<String> parts = acc.split('|');
 
       if (parts.length >= 4) {
+        final isNewAccountFormat = parts[2].contains('@');
+        final email = isNewAccountFormat ? parts[2] : parts[1];
+        final name = isNewAccountFormat ? parts[1] : email.split('@').first;
+
         savedAccounts.add({
           'uid': parts[0],
-          'email': parts[1],
-          'password': parts[2],
+          'name': name,
+          'email': email,
           'photo': parts[3],
+        });
+      } else if (parts.length == 1 && parts[0].contains('@')) {
+        savedAccounts.add({
+          'uid': '',
+          'name': parts[0].split('@').first,
+          'email': parts[0],
+          'photo': '',
         });
       }
     }
 
+    await prefs.setStringList(
+      'accounts',
+      savedAccounts.map((account) {
+        return '${account['uid']}|${account['name']}|'
+            '${account['email']}|${account['photo']}';
+      }).toList(),
+    );
+
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -331,24 +377,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                       : null,
                                 ),
                                 title: Text(
-                                  acc['email']!,
+                                  acc['name']!.toString().trim().isEmpty
+                                      ? acc['email']!
+                                      : acc['name']!,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                   ),
+                                ),
+                                subtitle: Text(
+                                  acc['email']!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 trailing: Icon(
                                   Icons.arrow_forward_ios,
                                   size: 16,
                                   color: Colors.grey[400],
                                 ),
-                                onTap: () async {
-                                  await FirebaseAuth.instance
-                                      .signInWithEmailAndPassword(
-                                        email: acc['email']!,
-                                        password: acc['password']!,
-                                      );
-
-                                  await checkUsernameAndGo();
+                                onTap: () {
+                                  emailController.text = acc['email']!;
+                                  passwordController.clear();
                                 },
                               ),
                             );

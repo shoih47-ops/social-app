@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,8 +17,6 @@ import '../services/post_service.dart';
 import '../widgets/like_button.dart';
 import '../widgets/comment_button.dart';
 
-import 'package:timeago/timeago.dart' as timeago;
-
 import '../models/post.dart';
 
 class PostDetailScreen extends StatefulWidget {
@@ -31,6 +31,58 @@ class PostDetailScreen extends StatefulWidget {
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final TextEditingController commentController = TextEditingController();
   final Map<String, bool> _showReplies = {};
+  Timer? _timeRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timeRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timeRefreshTimer?.cancel();
+    commentController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildMetaChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E8FF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF6D28D9),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoodCategoryChips(Post post) {
+    final chips = <Widget>[
+      if (post.mood.trim().isNotEmpty) _buildMetaChip(post.mood.trim()),
+      if (post.category.trim().isNotEmpty) _buildMetaChip(post.category.trim()),
+    ];
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5, bottom: 3),
+      child: Wrap(spacing: 6, runSpacing: 4, children: chips),
+    );
+  }
 
   Future<void> addComment(Map<String, dynamic> data) async {
     if (commentController.text.isEmpty) return;
@@ -53,7 +105,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           "username": userData['username'],
           "photoUrl": userData['photoUrl'],
           "text": commentController.text,
-          "createdAt": Timestamp.now(),
+          "createdAt": FieldValue.serverTimestamp(),
           "likes": [],
         });
 
@@ -107,7 +159,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           'userId': user.uid,
           'username': userData['username'],
           'photoUrl': userData['photoUrl'],
-          'createdAt': Timestamp.now(),
+          'createdAt': FieldValue.serverTimestamp(),
         });
 
     if (commentOwnerId != user.uid) {
@@ -122,7 +174,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             'isRead': false,
             'postId': widget.postId,
             'text': text,
-            'createdAt': Timestamp.now(),
+            'createdAt': FieldValue.serverTimestamp(),
           });
     }
   }
@@ -188,13 +240,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             type: data['type'] ?? 'image',
             likedBy: List<String>.from(data['likes'] ?? []),
             comments: [],
-            createdAt: data['createdAt'] != null
-                ? (data['createdAt'] as Timestamp).toDate()
-                : DateTime.now(),
+            createdAt: TimeAgoHelper.fromFirestore(data['createdAt']),
             userId: data['userId'] ?? '',
             content: data['content'] ?? '',
             username: data['username'] ?? '',
             userPhoto: data['userPhoto'] ?? '',
+            mood: data['mood'] ?? '',
+            category: data['category'] ?? '',
           );
 
           return SafeArea(
@@ -290,8 +342,13 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
                                           const SizedBox(height: 2),
 
+                                          _buildMoodCategoryChips(post),
+
                                           Text(
-                                            timeAgo(post.createdAt),
+                                            TimeAgoHelper.format(
+                                              post.createdAt,
+                                              display: TimeAgoDisplay.detail,
+                                            ),
                                             style: TextStyle(
                                               color: Colors.grey.shade600,
                                               fontSize: 13,
@@ -530,9 +587,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                                   : 'Deleted User',
                                               text: data['text'] ?? '',
                                               userId: data['userId'] ?? '',
-                                              time: timeago.format(
-                                                (data['createdAt'] as Timestamp)
-                                                    .toDate(),
+                                              time: TimeAgoHelper.format(
+                                                TimeAgoHelper.fromFirestore(
+                                                  data['createdAt'],
+                                                ),
                                               ),
                                               onReply: () {
                                                 showReplyDialog(

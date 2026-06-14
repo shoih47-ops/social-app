@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -29,6 +31,7 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   VideoPlayerController? _videoController;
+  Timer? _timeRefreshTimer;
 
   final currentUser = FirebaseAuth.instance.currentUser;
 
@@ -49,12 +52,55 @@ class _PostCardState extends State<PostCard> {
               _videoController!.setVolume(0);
             });
     }
+
+    _timeRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _timeRefreshTimer?.cancel();
     _videoController?.dispose();
     super.dispose();
+  }
+
+  Widget _buildMetaChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E8FF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF6D28D9),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoodCategoryChips() {
+    final chips = <Widget>[
+      if (widget.post.mood.trim().isNotEmpty)
+        _buildMetaChip(widget.post.mood.trim()),
+      if (widget.post.category.trim().isNotEmpty)
+        _buildMetaChip(widget.post.category.trim()),
+    ];
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(spacing: 6, runSpacing: 4, children: chips),
+    );
   }
 
   @override
@@ -136,151 +182,162 @@ class _PostCardState extends State<PostCard> {
                   final userData =
                       snapshot.data!.data() as Map<String, dynamic>;
 
-                  return Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundColor: const Color(0xfff3e8ff),
-                        backgroundImage:
-                            userData['photoUrl'] != null &&
-                                userData['photoUrl'].toString().isNotEmpty
-                            ? NetworkImage(userData['photoUrl'])
-                            : null,
-                        child:
-                            userData['photoUrl'] == null ||
-                                userData['photoUrl'].toString().isEmpty
-                            ? const Icon(
-                                Icons.person,
-                                color: Color(0xff8b5cf6),
-                                size: 20,
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 12),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              userData['username'] ?? "user",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                              ),
-                            ),
-
-                            SizedBox(height: 2),
-
-                            Text(
-                              timeAgo(widget.post.createdAt),
-                              style: TextStyle(
-                                color: Colors.black54,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor: const Color(0xfff3e8ff),
+                          backgroundImage:
+                              userData['photoUrl'] != null &&
+                                  userData['photoUrl'].toString().isNotEmpty
+                              ? NetworkImage(userData['photoUrl'])
+                              : null,
+                          child:
+                              userData['photoUrl'] == null ||
+                                  userData['photoUrl'].toString().isEmpty
+                              ? const Icon(
+                                  Icons.person,
+                                  color: Color(0xff8b5cf6),
+                                  size: 20,
+                                )
+                              : null,
                         ),
-                      ),
+                        const SizedBox(width: 12),
 
-                      if (currentUser != null &&
-                          currentUser!.uid != widget.post.userId)
-                        StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(currentUser!.uid)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const SizedBox();
-                            }
-                            final data =
-                                snapshot.data!.data() as Map<String, dynamic>;
-                            final following = List<String>.from(
-                              data['following'] ?? [],
-                            );
-
-                            final isFollowing = following.contains(
-                              widget.post.userId,
-                            );
-
-                            return GestureDetector(
-                              onTap: () async {
-                                if (isFollowing) {
-                                  await FollowService().unfollowUser(
-                                    currentUser!.uid,
-                                    widget.post.userId,
-                                  );
-                                } else {
-                                  await FollowService().followUser(
-                                    currentUser!.uid,
-                                    widget.post.userId,
-                                    currentUser!.displayName ?? "User",
-                                  );
-                                }
-                              },
-
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 7,
-                                ),
-
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF3E8FF),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-
-                                child: Text(
-                                  isFollowing ? "Following" : "Follow",
-
-                                  style: const TextStyle(
-                                    color: Color(0xFF8B5CF6),
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                userData['username'] ?? "user",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
                                 ),
                               ),
-                            );
-                          },
+
+                              const SizedBox(height: 3),
+
+                              Text(
+                                TimeAgoHelper.format(
+                                  widget.post.createdAt,
+                                  display: TimeAgoDisplay.feed,
+                                ),
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+
+                              _buildMoodCategoryChips(),
+                            ],
+                          ),
                         ),
 
-                      const SizedBox(width: 14),
+                        const SizedBox(width: 18),
 
-                      if (currentUser == null ||
-                          currentUser!.uid != widget.post.userId)
-                        PopupMenuButton<String>(
-                          onSelected: (value) async {
-                            if (value == 'report') {
-                              await ReportService.reportPost(
-                                postId: widget.post.id,
-                                userId: currentUser!.uid,
-                                reason: 'Inappropriate Content',
+                        if (currentUser != null &&
+                            currentUser!.uid != widget.post.userId)
+                          StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(currentUser!.uid)
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const SizedBox();
+                              }
+                              final data =
+                                  snapshot.data!.data()
+                                      as Map<String, dynamic>;
+                              final following = List<String>.from(
+                                data['following'] ?? [],
                               );
 
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Post reported'),
+                              final isFollowing = following.contains(
+                                widget.post.userId,
+                              );
+
+                              return GestureDetector(
+                                onTap: () async {
+                                  if (isFollowing) {
+                                    await FollowService().unfollowUser(
+                                      currentUser!.uid,
+                                      widget.post.userId,
+                                    );
+                                  } else {
+                                    await FollowService().followUser(
+                                      currentUser!.uid,
+                                      widget.post.userId,
+                                      currentUser!.displayName ?? "User",
+                                    );
+                                  }
+                                },
+
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 7,
                                   ),
+
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3E8FF),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+
+                                  child: Text(
+                                    isFollowing ? "Following" : "Follow",
+
+                                    style: const TextStyle(
+                                      color: Color(0xFF8B5CF6),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+
+                        const SizedBox(width: 14),
+
+                        if (currentUser == null ||
+                            currentUser!.uid != widget.post.userId)
+                          PopupMenuButton<String>(
+                            onSelected: (value) async {
+                              if (value == 'report') {
+                                await ReportService.reportPost(
+                                  postId: widget.post.id,
+                                  userId: currentUser!.uid,
+                                  reason: 'Inappropriate Content',
                                 );
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Post reported'),
+                                    ),
+                                  );
+                                }
                               }
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'report',
-                              child: Text('Report Post'),
-                            ),
-                          ],
-                        ),
-                    ],
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'report',
+                                child: Text('Report Post'),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
                   );
                 },
               ),
             ),
 
-            SizedBox(height: 8),
+            const SizedBox(height: 12),
 
             // Text Post
             if (widget.post.text.isNotEmpty)
@@ -295,7 +352,7 @@ class _PostCardState extends State<PostCard> {
                 ),
               ),
 
-            SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             /// IMAGE or VIDEO (POST)
             /// IMAGE POST
@@ -353,6 +410,7 @@ class _PostCardState extends State<PostCard> {
                             _videoController!.value.isInitialized
                         ? FittedBox(
                             fit: BoxFit.cover,
+                            alignment: Alignment.center,
                             child: SizedBox(
                               width: _videoController!.value.size.width,
                               height: _videoController!.value.size.height,
@@ -369,21 +427,21 @@ class _PostCardState extends State<PostCard> {
                 ),
               ),
 
-            SizedBox(height: 4),
+            const SizedBox(height: 16),
 
             /// ACTIONS
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+              padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
               decoration: BoxDecoration(
                 border: Border(
-                  top: BorderSide(color: Colors.black.withValues(alpha: 0.03)),
+                  top: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
                 ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   LikeButton(post: widget.post),
-                  SizedBox(width: 12),
+                  const SizedBox(width: 16),
                   CommentButton(
                     postId: widget.post.id,
                     postOwnerId: widget.post.userId,

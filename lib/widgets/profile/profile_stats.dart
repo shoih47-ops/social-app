@@ -39,9 +39,13 @@ class ProfileStats extends StatelessWidget {
         if (!userSnapshot.hasData) {
           return const CircularProgressIndicator();
         }
-        var data = userSnapshot.data!;
-        List followers = data['followers'] ?? [];
-        List following = data['following'] ?? [];
+        final data = userSnapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final followers = data['followers'] is List
+            ? data['followers'] as List
+            : [];
+        final following = data['following'] is List
+            ? data['following'] as List
+            : [];
 
         return StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance

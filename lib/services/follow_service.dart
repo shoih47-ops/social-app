@@ -21,7 +21,7 @@ class FollowService {
           'type': 'follow',
           'fromUserId': myId,
           'fromUsername': myUsername,
-          'createdAt': Timestamp.now(),
+          'createdAt': FieldValue.serverTimestamp(),
           'isRead': false,
         });
   }

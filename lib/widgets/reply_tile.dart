@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:timeago/timeago.dart' as timeago;
 import 'package:social_app/screens/user_profile_screen.dart';
 import 'package:social_app/screens/profile_screen.dart';
+import 'package:social_app/utils/time_ago.dart';
 
 class ReplyTile extends StatelessWidget {
   final Map<String, dynamic> replyData;
@@ -118,6 +118,8 @@ class ReplyTile extends StatelessWidget {
                         }
 
                         return RichText(
+                          softWrap: true,
+                          overflow: TextOverflow.visible,
                           text: TextSpan(
                             children: [
                               TextSpan(
@@ -143,8 +145,8 @@ class ReplyTile extends StatelessWidget {
                     ),
 
                     Text(
-                      timeago.format(
-                        (replyData['createdAt'] as Timestamp).toDate(),
+                      TimeAgoHelper.format(
+                        TimeAgoHelper.fromFirestore(replyData['createdAt']),
                       ),
                       style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),

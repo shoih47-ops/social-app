@@ -8,11 +8,13 @@ class Post {
   final String text;
   final List<String> likedBy;
   final List comments;
-  final DateTime createdAt;
+  final Timestamp createdAt;
   final String userId;
   final String content;
   final String username;
   final String userPhoto;
+  final String mood;
+  final String category;
 
   Post({
     required this.id,
@@ -27,6 +29,8 @@ class Post {
     required this.content,
     required this.username,
     required this.userPhoto,
+    this.mood = '',
+    this.category = '',
   });
 
   factory Post.fromDocument(DocumentSnapshot doc) {
@@ -40,11 +44,15 @@ class Post {
       text: data['text'],
       likedBy: List<String>.from(doc['likes'] ?? []),
       comments: List.from(doc['comments'] ?? []),
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      createdAt: data['createdAt'] is Timestamp
+          ? data['createdAt'] as Timestamp
+          : Timestamp.fromDate(DateTime.now()),
       userId: data['userId'] ?? '',
       content: data['content'] ?? '',
       username: data['username'] ?? 'user',
       userPhoto: data['userPhoto'] ?? '',
+      mood: data['mood'] ?? '',
+      category: data['category'] ?? '',
     );
   }
 }

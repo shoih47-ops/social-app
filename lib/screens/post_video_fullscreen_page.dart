@@ -12,14 +12,20 @@ import '../models/post.dart';
 import '../widgets/like_button.dart';
 import '../widgets/comment_button.dart';
 import '../utils/time_ago.dart';
+import 'comment_screen.dart';
 
 import '../screens/profile_screen.dart';
 import '../screens/user_profile_screen.dart';
 
 class PostVideoFullscreenPage extends StatefulWidget {
   final Post post;
+  final bool openComments;
 
-  const PostVideoFullscreenPage({super.key, required this.post});
+  const PostVideoFullscreenPage({
+    super.key,
+    required this.post,
+    this.openComments = false,
+  });
 
   @override
   State<PostVideoFullscreenPage> createState() =>
@@ -33,8 +39,10 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isMuted = false;
+  String get _caption => widget.post.text.trim();
   late final AnimationController _heartController;
   late final AnimationController _dismissController;
+  Timer? _timeRefreshTimer;
   // vertical drag to dismiss (not used currently)
 
   void _onVideoChanged() {
@@ -51,6 +59,9 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   void initState() {
     super.initState();
     _enterFullscreen();
+    if (widget.openComments) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showComments());
+    }
     _heartController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -59,6 +70,11 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
       vsync: this,
       duration: const Duration(milliseconds: 220),
     );
+    _timeRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
     _controller = VideoPlayerController.network(widget.post.videoUrl)
       ..setLooping(false)
       ..setVolume(1.0)
@@ -70,6 +86,27 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
         }
         _controller.play();
       });
+  }
+
+  void _showComments() {
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SizedBox(
+          height: MediaQuery.of(context).size.height * 0.9,
+          child: CommentScreen(
+            postId: widget.post.id,
+            postOwnerId: widget.post.userId,
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _handleDoubleTap() async {
@@ -159,8 +196,45 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
     return '$m:$s';
   }
 
+  Widget _buildMetaChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E8FF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF6D28D9),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoodCategoryChips() {
+    final chips = <Widget>[
+      if (widget.post.mood.trim().isNotEmpty)
+        _buildMetaChip(widget.post.mood.trim()),
+      if (widget.post.category.trim().isNotEmpty)
+        _buildMetaChip(widget.post.category.trim()),
+    ];
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5, bottom: 3),
+      child: Wrap(spacing: 6, runSpacing: 4, children: chips),
+    );
+  }
+
   @override
   void dispose() {
+    _timeRefreshTimer?.cancel();
     try {
       _controller.removeListener(_onVideoChanged);
     } catch (_) {}
@@ -263,8 +337,11 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                             );
 
                             if (confirm == true) {
+                              final deleteFuture = PostService.deleteVideoPost(
+                                widget.post.id,
+                              );
                               if (mounted) Navigator.pop(context);
-                              await PostService.deletePost(widget.post.id);
+                              await deleteFuture;
                             }
                           } else if (value == 'report') {
                             final cu = FirebaseAuth.instance.currentUser;
@@ -443,13 +520,37 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                         ),
 
                         const SizedBox(height: 4),
+                        _buildMoodCategoryChips(),
                         Text(
-                          timeAgo(widget.post.createdAt),
+                          TimeAgoHelper.format(
+                            widget.post.createdAt,
+                            display: TimeAgoDisplay.detail,
+                          ),
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 12,
                           ),
                         ),
+                        if (_caption.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            _caption,
+                            maxLines: 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              height: 1.3,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black87,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

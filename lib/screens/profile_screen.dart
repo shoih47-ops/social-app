@@ -2,14 +2,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:io';
 
 // removed unused import: login_screen.dart
 import 'edit_profile_screen.dart';
+import 'life_journey_details_screen.dart';
 
 import '../services/cloudinary_service.dart';
 import '../utils/route_observer.dart';
+import '../widgets/profile/profile_about_card.dart';
 import '../widgets/profile/profile_background.dart';
+import '../widgets/profile/profile_life_journey_card.dart';
 import '../widgets/profile/profile_screen_layout.dart';
 import '../widgets/profile/profile_header.dart';
 import '../widgets/profile/profile_stats.dart';
@@ -38,7 +42,20 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
   String bio = "";
   String? photoUrl;
   String coverUrl = '';
+  String? work;
+  String? family;
+  String? goal;
+  String? interests;
+  String? location;
+  String? relationship;
+  String? birthday;
+  String? lifeQuote;
+  List<Map<String, dynamic>> lifeJourney = [];
   bool _isUploadingCoverImage = false;
+  StreamSubscription<DocumentSnapshot>? _userSub;
+
+  String get _profileUserId =>
+      FirebaseAuth.instance.currentUser?.uid ?? widget.userId;
 
   bool get _hasCoverImage => _isValidCoverImageUrl(coverUrl);
 
@@ -58,63 +75,107 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
         path.endsWith('.bmp');
   }
 
-  void _notify() {
-    if (mounted) setState(() {});
+  String? _optionalProfileText(Map<String, dynamic> data, String field) {
+    final value = data[field];
+    if (value is! String) return null;
+
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
-  Future<void> getUserData() async {
-    final doc = await FirebaseFirestore.instance
+  String? _formatBirthday(dynamic value) {
+    if (value is! String || value.trim().isEmpty) return null;
+
+    final date = DateTime.tryParse(value.trim());
+    if (date == null) return null;
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  List<Map<String, dynamic>> _parseLifeJourney(dynamic value) {
+    if (value is! List) return [];
+
+    return value.whereType<Map>().map((item) {
+      return {
+        'year': (item['year'] ?? '').toString().trim(),
+        'title': (item['title'] ?? '').toString().trim(),
+      };
+    }).where((item) {
+      return item['year']!.isNotEmpty && item['title']!.isNotEmpty;
+    }).toList();
+  }
+
+  void _applyUserData(Map<String, dynamic> data) {
+    if (!mounted) return;
+    setState(() {
+      userName = data['username'] ?? 'User Name';
+      bio = data['bio'] ?? '';
+      photoUrl = data['photoUrl'] ?? '';
+      coverUrl = data['coverUrl'] ?? '';
+      work = _optionalProfileText(data, 'work');
+      family = _optionalProfileText(data, 'family');
+      goal = _optionalProfileText(data, 'goal');
+      interests = _optionalProfileText(data, 'interests');
+      location = _optionalProfileText(data, 'location');
+      relationship = _optionalProfileText(data, 'relationship');
+      birthday = _formatBirthday(data['birthday']);
+      lifeQuote = _optionalProfileText(data, 'lifeQuote');
+      lifeJourney = _parseLifeJourney(data['lifeJourney']);
+    });
+  }
+
+  void _listenToUserData() {
+    _userSub?.cancel();
+    _userSub = FirebaseFirestore.instance
         .collection('users')
-        .doc(widget.userId)
-        .get();
-
-    final rawData = doc.data();
-    if (rawData != null) {
-      final data = rawData;
-
-      setState(() {
-        userName = data['username'] ?? '';
-        bio = data['bio'] ?? '';
-        photoUrl = data['photoUrl'] ?? '';
-        coverUrl = data['coverUrl'] ?? '';
-      });
-    }
-
-    _notify();
+        .doc(_profileUserId)
+        .snapshots()
+        .listen((doc) {
+          final data = doc.data();
+          if (data != null) {
+            _applyUserData(data);
+          }
+        });
   }
 
   void editProfile() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const EditProfileScreen()),
-    );
+    ).then((_) => loadProfile());
   }
 
   Future<void> loadProfile() async {
-    final user = FirebaseAuth.instance.currentUser;
     final doc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(user!.uid)
+        .doc(_profileUserId)
         .get();
 
     final rawData = doc.data();
     if (rawData != null) {
-      final data = rawData;
-
-      setState(() {
-        userName = data['username'] ?? 'User Name';
-        bio = data['bio'] ?? 'My bio';
-        photoUrl = data['photoUrl'];
-        coverUrl = data['coverUrl'] ?? '';
-      });
+      _applyUserData(rawData);
     }
   }
 
   @override
   void initState() {
     super.initState();
+    _listenToUserData();
     loadProfile();
-    getUserData();
   }
 
   @override
@@ -141,6 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
     try {
       routeObserver.unsubscribe(this);
     } catch (_) {}
+    _userSub?.cancel();
     super.dispose();
   }
 
@@ -374,6 +436,29 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
                 userName: userName,
                 bio: bio,
                 onPickImage: pickImage,
+              ),
+              ProfileAboutCard(
+                work: work,
+                family: family,
+                goal: goal,
+                interests: interests,
+                location: location,
+                relationship: relationship,
+                birthday: birthday,
+                lifeQuote: lifeQuote,
+              ),
+              ProfileLifeJourneyCard(
+                lifeJourney: lifeJourney,
+                onViewAll: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LifeJourneyDetailsScreen(
+                        lifeJourney: lifeJourney,
+                      ),
+                    ),
+                  );
+                },
               ),
               const ProfileStats(),
               const SizedBox(height: 24),

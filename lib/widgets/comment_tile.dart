@@ -104,25 +104,23 @@ class CommentTile extends StatelessWidget {
 
                 const SizedBox(height: 3),
 
-                Text(text),
+                Text(text, softWrap: true, overflow: TextOverflow.visible),
 
-                Row(
-                  children: [
-                    Text(
-                      time,
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
+                const SizedBox(height: 4),
 
-                    const SizedBox(width: 8),
+                Text(
+                  time,
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
 
-                    GestureDetector(
-                      onTap: onReply,
-                      child: const Text(
-                        "Reply",
-                        style: TextStyle(color: Colors.blue, fontSize: 12),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 2),
+
+                GestureDetector(
+                  onTap: onReply,
+                  child: const Text(
+                    "Reply",
+                    style: TextStyle(color: Colors.blue, fontSize: 12),
+                  ),
                 ),
               ],
             ),

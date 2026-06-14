@@ -1,8 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class PostService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static final ValueNotifier<Set<String>> deletingVideoPostIds = ValueNotifier(
+    <String>{},
+  );
 
   static Future<void> toggleLike(String postId) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -32,6 +36,8 @@ class PostService {
     String imageUrl = '',
     String videoUrl = '',
     required String type,
+    String mood = '',
+    String category = '',
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     final userDoc = await _db.collection('users').doc(user!.uid).get();
@@ -40,13 +46,15 @@ class PostService {
     await _db.collection('posts').add({
       'text': text,
       'comments': [],
-      'createdAt': Timestamp.now(),
+      'createdAt': FieldValue.serverTimestamp(),
       'userId': user.uid,
       'username': userData?['username'] ?? user.displayName ?? '',
       'userPhoto': userData?['photoUrl'] ?? '',
       'imageUrl': imageUrl,
       'videoUrl': videoUrl,
       'type': type,
+      'mood': mood,
+      'category': category,
       'likes': [],
     });
   }
@@ -57,6 +65,19 @@ class PostService {
 
       print('POST DELETED');
     } catch (e) {
+      print('DELETE ERROR: $e');
+    }
+  }
+
+  static Future<void> deleteVideoPost(String postId) async {
+    deletingVideoPostIds.value = {...deletingVideoPostIds.value, postId};
+    try {
+      await _db.collection('posts').doc(postId).delete();
+
+      print('POST DELETED');
+    } catch (e) {
+      deletingVideoPostIds.value = {...deletingVideoPostIds.value}
+        ..remove(postId);
       print('DELETE ERROR: $e');
     }
   }
