@@ -24,6 +24,12 @@ class _CommentScreenState extends State<CommentScreen> {
   final commentController = TextEditingController();
   final Map<String, bool> _showReplies = {};
 
+  @override
+  void dispose() {
+    commentController.dispose();
+    super.dispose();
+  }
+
   Future<void> addComment() async {
     if (commentController.text.isEmpty) return;
 
@@ -91,8 +97,12 @@ class _CommentScreenState extends State<CommentScreen> {
     String commentOwnerId,
     String username,
   ) {
-    TextEditingController controller = TextEditingController(
-      text: '@$username ',
+    final mentionText = '@$username ';
+    final controller = TextEditingController.fromValue(
+      TextEditingValue(
+        text: mentionText,
+        selection: TextSelection.collapsed(offset: mentionText.length),
+      ),
     );
 
     showDialog(
@@ -119,7 +129,7 @@ class _CommentScreenState extends State<CommentScreen> {
           ],
         );
       },
-    );
+    ).whenComplete(controller.dispose);
   }
 
   void sendReply(

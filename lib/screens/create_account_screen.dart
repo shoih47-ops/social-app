@@ -18,6 +18,13 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   bool isLoading = false;
   bool obscurePassword = true;
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> register() async {
     setState(() {
       isLoading = true;

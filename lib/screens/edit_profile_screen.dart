@@ -33,22 +33,52 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   DateTime? _birthday;
   bool _isLoading = false;
   bool _isUploadingImage = false;
+  bool _hasLoadedProfile = false;
+  bool _isApplyingProfileData = false;
+  bool _hasUserEditedProfileFields = false;
   String? _nameErrorText;
 
   @override
   void initState() {
     super.initState();
-    _nameController.addListener(() {
-      if (_nameErrorText != null && _nameController.text.trim().isNotEmpty) {
-        setState(() {
-          _nameErrorText = null;
-        });
-      }
-    });
+    _nameController.addListener(_handleNameChanged);
+    _bioController.addListener(_markProfileEdited);
+    _workController.addListener(_markProfileEdited);
+    _familyController.addListener(_markProfileEdited);
+    _goalController.addListener(_markProfileEdited);
+    _interestsController.addListener(_markProfileEdited);
+    _locationController.addListener(_markProfileEdited);
+    _relationshipController.addListener(_markProfileEdited);
+    _lifeQuoteController.addListener(_markProfileEdited);
     _loadProfile();
   }
 
+  void _handleNameChanged() {
+    _markProfileEdited();
+    if (_nameErrorText != null && _nameController.text.trim().isNotEmpty) {
+      setState(() {
+        _nameErrorText = null;
+      });
+    }
+  }
+
+  void _markProfileEdited() {
+    if (!_isApplyingProfileData) {
+      _hasUserEditedProfileFields = true;
+    }
+  }
+
+  void _setLoadedText(TextEditingController controller, dynamic value) {
+    final text = (value ?? '').toString();
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
   Future<void> _loadProfile() async {
+    if (_hasLoadedProfile) return;
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -57,23 +87,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         .doc(user.uid)
         .get();
 
+    if (!mounted || _hasLoadedProfile) return;
+
     final data = doc.data();
     if (data != null) {
-      _nameController.text = data['username'] ?? '';
-      _bioController.text = data['bio'] ?? '';
-      _workController.text = data['work'] ?? '';
-      _familyController.text = data['family'] ?? '';
-      _goalController.text = data['goal'] ?? '';
-      _interestsController.text = data['interests'] ?? '';
-      _locationController.text = data['location'] ?? '';
-      _relationshipController.text = data['relationship'] ?? '';
-      _lifeQuoteController.text = data['lifeQuote'] ?? '';
-      _birthday = _parseBirthday(data['birthday']);
-      _setJourneyInputs(data['lifeJourney']);
+      if (_hasUserEditedProfileFields) {
+        _hasLoadedProfile = true;
+        return;
+      }
+
+      _isApplyingProfileData = true;
+      try {
+        _setLoadedText(_nameController, data['username']);
+        _setLoadedText(_bioController, data['bio']);
+        _setLoadedText(_workController, data['work']);
+        _setLoadedText(_familyController, data['family']);
+        _setLoadedText(_goalController, data['goal']);
+        _setLoadedText(_interestsController, data['interests']);
+        _setLoadedText(_locationController, data['location']);
+        _setLoadedText(_relationshipController, data['relationship']);
+        _setLoadedText(_lifeQuoteController, data['lifeQuote']);
+        _birthday = _parseBirthday(data['birthday']);
+        _setJourneyInputs(data['lifeJourney']);
+      } finally {
+        _isApplyingProfileData = false;
+      }
+
       setState(() {
         _photoUrl = data['photoUrl'] ?? '';
       });
     }
+
+    _hasLoadedProfile = true;
   }
 
   Future<void> _pickImage() async {

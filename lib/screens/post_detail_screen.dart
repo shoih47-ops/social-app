@@ -184,8 +184,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     String commentOwnerId,
     String username,
   ) {
-    TextEditingController controller = TextEditingController(
-      text: '@$username ',
+    final mentionText = '@$username ';
+    final controller = TextEditingController.fromValue(
+      TextEditingValue(
+        text: mentionText,
+        selection: TextSelection.collapsed(offset: mentionText.length),
+      ),
     );
 
     showDialog(
@@ -213,7 +217,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           ],
         );
       },
-    );
+    ).whenComplete(controller.dispose);
   }
 
   @override

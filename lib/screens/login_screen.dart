@@ -164,6 +164,13 @@ class _LoginScreenState extends State<LoginScreen> {
     loadAccounts();
   }
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
@@ -395,7 +402,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: Colors.grey[400],
                                 ),
                                 onTap: () {
-                                  emailController.text = acc['email']!;
+                                  final email = acc['email']!;
+                                  emailController.value = TextEditingValue(
+                                    text: email,
+                                    selection: TextSelection.collapsed(
+                                      offset: email.length,
+                                    ),
+                                  );
                                   passwordController.clear();
                                 },
                               ),

@@ -14,6 +14,12 @@ class CreateUsernameScreen extends StatefulWidget {
 class _CreateUsernameScreenState extends State<CreateUsernameScreen> {
   final usernameController = TextEditingController();
 
+  @override
+  void dispose() {
+    usernameController.dispose();
+    super.dispose();
+  }
+
   Future<void> saveUsername() async {
     String uid = FirebaseAuth.instance.currentUser!.uid;
     String username = usernameController.text.trim();
