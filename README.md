@@ -1,4 +1,4 @@
-# social_app
+# Journa
 
 A new Flutter project.
 

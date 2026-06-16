@@ -1,11 +1,11 @@
 {
-    "name": "social_app",
-    "short_name": "social_app",
+    "name": "Journa",
+    "short_name": "Journa",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#5B3DFF",
+    "theme_color": "#2879FF",
+    "description": "Every Life Has a Story",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

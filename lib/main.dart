@@ -26,6 +26,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Journa',
       debugShowCheckedModeBanner: false,
       home: AuthGate(),
       navigatorObservers: [routeObserver],

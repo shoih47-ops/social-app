@@ -70,11 +70,29 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
           builder: (_) => const EditProfileScreen(completeOnSave: true),
         ),
       );
-    } catch (e) {
-      // Keep it minimal: show a snackbar for failure
+    } on FirebaseAuthException catch (e, stackTrace) {
+      debugPrint('Register FirebaseAuthException code: ${e.code}');
+      debugPrint('Register FirebaseAuthException message: ${e.message}');
+      debugPrint('Register FirebaseAuthException stackTrace: $stackTrace');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registration failed: ${e.message ?? e.code}')),
+      );
+    } on FirebaseException catch (e, stackTrace) {
+      debugPrint('Register FirebaseException code: ${e.code}');
+      debugPrint('Register FirebaseException message: ${e.message}');
+      debugPrint('Register FirebaseException stackTrace: $stackTrace');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registration failed: ${e.message ?? e.code}')),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Register unexpected error: $e');
+      debugPrint('Register unexpected stackTrace: $stackTrace');
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Registration failed')));
+      ).showSnackBar(SnackBar(content: Text('Registration failed: $e')));
     }
 
     if (mounted) {

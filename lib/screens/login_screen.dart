@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -63,10 +64,29 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       await checkUsernameAndGo();
-    } catch (e) {
+    } on FirebaseAuthException catch (e, stackTrace) {
+      debugPrint('Login FirebaseAuthException code: ${e.code}');
+      debugPrint('Login FirebaseAuthException message: ${e.message}');
+      debugPrint('Login FirebaseAuthException stackTrace: $stackTrace');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: ${e.message ?? e.code}')),
+      );
+    } on FirebaseException catch (e, stackTrace) {
+      debugPrint('Login FirebaseException code: ${e.code}');
+      debugPrint('Login FirebaseException message: ${e.message}');
+      debugPrint('Login FirebaseException stackTrace: $stackTrace');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: ${e.message ?? e.code}')),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Login unexpected error: $e');
+      debugPrint('Login unexpected stackTrace: $stackTrace');
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Login failed")));
+      ).showSnackBar(SnackBar(content: Text('Login failed: $e')));
     }
 
     setState(() {
@@ -103,10 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     updatedAccounts.insert(0, accountData);
 
-    await prefs.setStringList(
-      'accounts',
-      updatedAccounts.take(5).toList(),
-    );
+    await prefs.setStringList('accounts', updatedAccounts.take(5).toList());
   }
 
   void loadAccounts() async {
@@ -173,19 +190,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (kIsWeb) {
+        await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+      } else {
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
-      if (googleUser == null) return;
+        if (googleUser == null) return;
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
+        await FirebaseAuth.instance.signInWithCredential(credential);
+      }
 
       final user = FirebaseAuth.instance.currentUser;
 
@@ -272,8 +293,37 @@ class _LoginScreenState extends State<LoginScreen> {
           MaterialPageRoute(builder: (_) => HomeScreen()),
         );
       }
-    } catch (e) {
-      print(e);
+    } on FirebaseAuthException catch (e, stackTrace) {
+      debugPrint('LoginScreen register FirebaseAuthException code: ${e.code}');
+      debugPrint(
+        'LoginScreen register FirebaseAuthException message: ${e.message}',
+      );
+      debugPrint(
+        'LoginScreen register FirebaseAuthException stackTrace: $stackTrace',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registration failed: ${e.message ?? e.code}')),
+      );
+    } on FirebaseException catch (e, stackTrace) {
+      debugPrint('LoginScreen register FirebaseException code: ${e.code}');
+      debugPrint(
+        'LoginScreen register FirebaseException message: ${e.message}',
+      );
+      debugPrint(
+        'LoginScreen register FirebaseException stackTrace: $stackTrace',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Registration failed: ${e.message ?? e.code}')),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('LoginScreen register unexpected error: $e');
+      debugPrint('LoginScreen register unexpected stackTrace: $stackTrace');
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Registration failed: $e')));
     }
   }
 
@@ -307,7 +357,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
                       Text(
-                        'Welcome 👋',
+                        'Journa',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 32,
@@ -317,7 +367,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'Capture and share your real life moments — beautifully and easily.',
+                        'Every Life Has a Story',
                         style: TextStyle(color: Colors.white70, fontSize: 15),
                       ),
                     ],

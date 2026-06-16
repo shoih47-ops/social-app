@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../../screens/create_post_screen.dart';
 import '../../screens/post_detail_screen.dart';
 import '../../models/post.dart';
 import '../../screens/post_video_fullscreen_page.dart';
@@ -14,6 +16,8 @@ class UserProfilePostsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCurrentUser = FirebaseAuth.instance.currentUser?.uid == userId;
+
     return Column(
       children: [
         const Padding(
@@ -56,18 +60,7 @@ class UserProfilePostsGrid extends StatelessWidget {
                 }).toList();
 
                 if (visiblePosts.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 36),
-                    child: Text(
-                      "Share your first life moment ✨",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  );
+                  return _MomentsEmptyState(isCurrentUser: isCurrentUser);
                 }
 
                 return GridView.builder(
@@ -119,6 +112,77 @@ class UserProfilePostsGrid extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _MomentsEmptyState extends StatelessWidget {
+  final bool isCurrentUser;
+
+  const _MomentsEmptyState({required this.isCurrentUser});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 34),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isCurrentUser
+                  ? 'Share your first life moment ✨'
+                  : 'No moments yet',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isCurrentUser
+                  ? 'Create your first post'
+                  : "This user hasn't shared any moments yet.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 14,
+                height: 1.35,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            if (isCurrentUser) ...[
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6D4CFF),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: const Text(
+                  'Create your first post',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -263,10 +327,7 @@ class _CreatedAtBadge extends StatelessWidget {
   final String text;
   final bool isMedia;
 
-  const _CreatedAtBadge({
-    required this.text,
-    required this.isMedia,
-  });
+  const _CreatedAtBadge({required this.text, required this.isMedia});
 
   @override
   Widget build(BuildContext context) {

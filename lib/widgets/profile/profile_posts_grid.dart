@@ -130,7 +130,7 @@ class _MomentsEmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              '✨ No moments yet',
+              'Share your first life moment ✨',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.black87,
@@ -140,7 +140,7 @@ class _MomentsEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Start sharing your real life moments with others.',
+              'Create your first post',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.black54,
@@ -154,9 +154,7 @@ class _MomentsEmptyState extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const CreatePostScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const CreatePostScreen()),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -172,11 +170,8 @@ class _MomentsEmptyState extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'Create First Post',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+                'Create your first post',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -326,10 +321,7 @@ class _CreatedAtBadge extends StatelessWidget {
   final String text;
   final bool isMedia;
 
-  const _CreatedAtBadge({
-    required this.text,
-    required this.isMedia,
-  });
+  const _CreatedAtBadge({required this.text, required this.isMedia});
 
   @override
   Widget build(BuildContext context) {
