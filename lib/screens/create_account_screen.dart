@@ -5,7 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'edit_profile_screen.dart';
 
 class CreateAccountScreen extends StatefulWidget {
-  const CreateAccountScreen({super.key});
+  final String? initialPostId;
+
+  const CreateAccountScreen({super.key, this.initialPostId});
 
   @override
   State<CreateAccountScreen> createState() => _CreateAccountScreenState();
@@ -67,7 +69,10 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => const EditProfileScreen(completeOnSave: true),
+          builder: (_) => EditProfileScreen(
+            completeOnSave: true,
+            initialPostId: widget.initialPostId,
+          ),
         ),
       );
     } on FirebaseAuthException catch (e, stackTrace) {

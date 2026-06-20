@@ -2,7 +2,9 @@ part of '../../screens/create_post_screen.dart';
 
 class MediaPreviewCard extends StatelessWidget {
   final File? selectedImage;
+  final Uint8List? selectedImageBytes;
   final File? selectedVideo;
+  final String? selectedVideoPreviewUrl;
   final Uint8List? selectedVideoThumbnail;
   final Duration? selectedVideoDuration;
   final VoidCallback onPreviewImage;
@@ -13,7 +15,9 @@ class MediaPreviewCard extends StatelessWidget {
   const MediaPreviewCard({
     super.key,
     required this.selectedImage,
+    required this.selectedImageBytes,
     required this.selectedVideo,
+    required this.selectedVideoPreviewUrl,
     required this.selectedVideoThumbnail,
     required this.selectedVideoDuration,
     required this.onPreviewImage,
@@ -24,7 +28,7 @@ class MediaPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (selectedImage != null) {
+    if (selectedImage != null || selectedImageBytes != null) {
       return Stack(
         children: [
           GestureDetector(
@@ -45,13 +49,21 @@ class MediaPreviewCard extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: Image.file(
-                  selectedImage!,
-                  height: 220,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.high,
-                ),
+                child: kIsWeb && selectedImageBytes != null
+                    ? Image.memory(
+                        selectedImageBytes!,
+                        height: 220,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
+                      )
+                    : Image.file(
+                        selectedImage!,
+                        height: 220,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
+                      ),
               ),
             ),
           ),
@@ -74,7 +86,7 @@ class MediaPreviewCard extends StatelessWidget {
       );
     }
 
-    if (selectedVideo != null) {
+    if (selectedVideo != null || selectedVideoPreviewUrl != null) {
       return Stack(
         children: [
           GestureDetector(
@@ -249,9 +261,10 @@ class MediaPreviewCard extends StatelessWidget {
 }
 
 class _LocalImagePreviewScreen extends StatelessWidget {
-  final File image;
+  final File? image;
+  final Uint8List? imageBytes;
 
-  const _LocalImagePreviewScreen({required this.image});
+  const _LocalImagePreviewScreen({this.image, this.imageBytes});
 
   @override
   Widget build(BuildContext context) {
@@ -261,11 +274,17 @@ class _LocalImagePreviewScreen extends StatelessWidget {
         children: [
           Center(
             child: InteractiveViewer(
-              child: Image.file(
-                image,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-              ),
+              child: kIsWeb && imageBytes != null
+                  ? Image.memory(
+                      imageBytes!,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    )
+                  : Image.file(
+                      image!,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
             ),
           ),
           Positioned(
@@ -290,9 +309,10 @@ class _LocalImagePreviewScreen extends StatelessWidget {
 }
 
 class _LocalVideoPreviewScreen extends StatefulWidget {
-  final File video;
+  final File? video;
+  final String? videoUrl;
 
-  const _LocalVideoPreviewScreen({required this.video});
+  const _LocalVideoPreviewScreen({this.video, this.videoUrl});
 
   @override
   State<_LocalVideoPreviewScreen> createState() =>
@@ -308,17 +328,22 @@ class _LocalVideoPreviewScreenState extends State<_LocalVideoPreviewScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(widget.video)
-      ..setLooping(true)
-      ..initialize().then((_) {
-        if (!mounted) return;
+    final videoUrl = widget.videoUrl;
+    final video = widget.video;
+    _controller =
+        (kIsWeb && videoUrl != null
+              ? VideoPlayerController.networkUrl(Uri.parse(videoUrl))
+              : VideoPlayerController.file(video!))
+          ..setLooping(true)
+          ..initialize().then((_) {
+            if (!mounted) return;
 
-        _controller.addListener(_onVideoChanged);
-        setState(() {
-          _duration = _controller.value.duration;
-        });
-        _controller.play();
-      });
+            _controller.addListener(_onVideoChanged);
+            setState(() {
+              _duration = _controller.value.duration;
+            });
+            _controller.play();
+          });
   }
 
   void _onVideoChanged() {

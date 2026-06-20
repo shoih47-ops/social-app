@@ -4,9 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../screens/create_post_screen.dart';
-import '../../screens/post_detail_screen.dart';
-import '../../models/post.dart';
-import '../../screens/post_video_fullscreen_page.dart';
+import '../../services/post_navigation_service.dart';
 import '../../services/post_service.dart';
 
 class UserProfilePostsGrid extends StatelessWidget {
@@ -81,23 +79,10 @@ class UserProfilePostsGrid extends StatelessWidget {
 
                     return GestureDetector(
                       onTap: () {
-                        if (type == 'video') {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PostVideoFullscreenPage(
-                                post: Post.fromDocument(doc),
-                              ),
-                            ),
-                          );
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PostDetailScreen(postId: doc.id),
-                            ),
-                          );
-                        }
+                        PostNavigationService.openPostFromSnapshot(
+                          context,
+                          postDoc: doc,
+                        );
                       },
                       child: _PostGridThumbnail(
                         postId: doc.id,

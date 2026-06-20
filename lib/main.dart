@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'screens/auth_gate.dart';
 import 'services/fcm_service.dart';
+import 'services/share_service.dart';
 import 'utils/route_observer.dart';
 
 @pragma('vm:entry-point')
@@ -16,11 +17,13 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await FcmService.instance.initialize();
-  runApp(MyApp());
+  runApp(MyApp(initialPostId: ShareService.postIdFromInitialLink()));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final String? initialPostId;
+
+  const MyApp({super.key, this.initialPostId});
 
   // This widget is the root of your application.
   @override
@@ -28,7 +31,18 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Journa',
       debugShowCheckedModeBanner: false,
-      home: AuthGate(),
+      home: AuthGate(initialPostId: initialPostId),
+      onGenerateRoute: (settings) {
+        final postId = ShareService.postIdFromRoute(settings.name ?? '');
+        if (postId != null) {
+          return MaterialPageRoute(
+            builder: (_) => AuthGate(initialPostId: postId),
+            settings: settings,
+          );
+        }
+
+        return null;
+      },
       navigatorObservers: [routeObserver],
     );
   }

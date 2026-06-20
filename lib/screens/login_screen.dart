@@ -9,7 +9,9 @@ import 'create_username_screen.dart';
 import 'create_account_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? initialPostId;
+
+  const LoginScreen({super.key, this.initialPostId});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -37,12 +39,18 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!doc.exists || data?['username'] == null || data?['username'] == '') {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => CreateUsernameScreen()),
+        MaterialPageRoute(
+          builder: (_) => CreateUsernameScreen(
+            initialPostId: widget.initialPostId,
+          ),
+        ),
       );
     } else {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(initialPostId: widget.initialPostId),
+        ),
       );
     }
   }
@@ -175,6 +183,54 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.remove('accounts');
   }
 
+  Future<void> _confirmRemoveSavedAccount(Map<String, dynamic> account) async {
+    final shouldRemove = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Remove account'),
+          content: const Text('Remove this account from this device?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Remove'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldRemove == true) {
+      await _removeSavedAccount(account);
+    }
+  }
+
+  Future<void> _removeSavedAccount(Map<String, dynamic> account) async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = (account['email'] ?? '').toString();
+    final uid = (account['uid'] ?? '').toString();
+
+    savedAccounts.removeWhere((savedAccount) {
+      return savedAccount['email'] == email ||
+          (uid.isNotEmpty && savedAccount['uid'] == uid);
+    });
+
+    await prefs.setStringList(
+      'accounts',
+      savedAccounts.map((savedAccount) {
+        return '${savedAccount['uid']}|${savedAccount['name']}|'
+            '${savedAccount['email']}|${savedAccount['photo']}';
+      }).toList(),
+    );
+
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -228,7 +284,11 @@ class _LoginScreenState extends State<LoginScreen> {
         // new user -> ask username
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => CreateUsernameScreen()),
+          MaterialPageRoute(
+            builder: (_) => CreateUsernameScreen(
+              initialPostId: widget.initialPostId,
+            ),
+          ),
         );
         return;
       }
@@ -239,13 +299,19 @@ class _LoginScreenState extends State<LoginScreen> {
         // username missing -> ask
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => CreateUsernameScreen()),
+          MaterialPageRoute(
+            builder: (_) => CreateUsernameScreen(
+              initialPostId: widget.initialPostId,
+            ),
+          ),
         );
       } else {
         // Normal user -> home
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(initialPostId: widget.initialPostId),
+          ),
         );
       }
     } catch (e) {
@@ -284,13 +350,19 @@ class _LoginScreenState extends State<LoginScreen> {
         // Go to Create Username Screen
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => CreateUsernameScreen()),
+          MaterialPageRoute(
+            builder: (_) => CreateUsernameScreen(
+              initialPostId: widget.initialPostId,
+            ),
+          ),
         );
       } else {
         // Go to Home
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(initialPostId: widget.initialPostId),
+          ),
         );
       }
     } on FirebaseAuthException catch (e, stackTrace) {
@@ -446,10 +518,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                trailing: Icon(
-                                  Icons.arrow_forward_ios,
-                                  size: 16,
-                                  color: Colors.grey[400],
+                                trailing: IconButton(
+                                  tooltip: 'Remove saved account',
+                                  icon: Icon(
+                                    Icons.close,
+                                    size: 18,
+                                    color: Colors.grey[500],
+                                  ),
+                                  onPressed: () {
+                                    _confirmRemoveSavedAccount(acc);
+                                  },
                                 ),
                                 onTap: () {
                                   final email = acc['email']!;
@@ -585,7 +663,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      const CreateAccountScreen(),
+                                      CreateAccountScreen(
+                                        initialPostId: widget.initialPostId,
+                                      ),
                                 ),
                               );
                             },

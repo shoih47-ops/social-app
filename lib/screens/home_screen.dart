@@ -7,9 +7,12 @@ import 'create_post_screen.dart';
 import 'notification_screen.dart';
 import 'profile_screen.dart';
 import '../services/fcm_service.dart';
+import '../services/post_navigation_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final String? initialPostId;
+
+  const HomeScreen({super.key, this.initialPostId});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -41,6 +44,17 @@ class _HomeScreenState extends State<HomeScreen> {
         tabIndex: 3,
       ),
     ];
+    _openInitialPostLink();
+  }
+
+  void _openInitialPostLink() {
+    final postId = widget.initialPostId;
+    if (postId == null || postId.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      PostNavigationService.openPost(context, postId: postId);
+    });
   }
 
   Stream<int> getUnreadCount() {

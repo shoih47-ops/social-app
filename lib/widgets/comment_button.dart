@@ -8,6 +8,7 @@ class CommentButton extends StatelessWidget {
   final String postOwnerId;
   final Color? iconColor;
   final Color? textColor;
+  final Future<void> Function()? onBeforeOpen;
 
   const CommentButton({
     super.key,
@@ -15,6 +16,7 @@ class CommentButton extends StatelessWidget {
     required this.postOwnerId,
     this.iconColor,
     this.textColor,
+    this.onBeforeOpen,
   });
 
   @override
@@ -40,7 +42,9 @@ class CommentButton extends StatelessWidget {
                 Icons.comment_outlined,
                 color: iconColor ?? Colors.black,
               ),
-              onPressed: () {
+              onPressed: () async {
+                await onBeforeOpen?.call();
+                if (!context.mounted) return;
                 showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,

@@ -11,20 +11,27 @@ const profileBackgroundGradient = LinearGradient(
 /// Cover image and gradient only; no interactive controls.
 class ProfileBackground extends StatelessWidget {
   final String coverUrl;
+  final double height;
+  final VoidCallback? onTap;
 
-  const ProfileBackground({super.key, required this.coverUrl});
+  const ProfileBackground({
+    super.key,
+    required this.coverUrl,
+    this.height = 260,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 260,
+      height: height,
       width: double.infinity,
       child: ClipRect(
         child: Stack(
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
           children: [
-            Positioned.fill(child: _buildBackground()),
+            _buildBackground(),
             Positioned.fill(
               child: IgnorePointer(
                 child: Container(
@@ -49,14 +56,26 @@ class ProfileBackground extends StatelessWidget {
 
   Widget _buildBackground() {
     if (_isValidImageUrl(coverUrl)) {
-      return CachedNetworkImage(
-        imageUrl: coverUrl,
-        fit: BoxFit.cover,
-        errorWidget: (context, url, error) => _gradientPlaceholder(),
+      return _withTap(
+        CachedNetworkImage(
+          imageUrl: coverUrl,
+          fit: BoxFit.cover,
+          errorWidget: (context, url, error) => _gradientPlaceholder(),
+        ),
       );
     }
 
-    return _gradientPlaceholder();
+    return _withTap(_gradientPlaceholder());
+  }
+
+  Widget _withTap(Widget child) {
+    if (onTap == null) return child;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.deferToChild,
+      onTap: onTap,
+      child: child,
+    );
   }
 
   Widget _gradientPlaceholder() {

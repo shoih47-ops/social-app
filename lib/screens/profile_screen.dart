@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
@@ -47,17 +48,33 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
   String? goal;
   String? interests;
   String? location;
+  String? nationality;
   String? relationship;
   String? birthday;
   String? lifeQuote;
   List<Map<String, dynamic>> lifeJourney = [];
   bool _isUploadingCoverImage = false;
   StreamSubscription<DocumentSnapshot>? _userSub;
+  final ScrollController _scrollController = ScrollController();
+  double _appBarTransition = 0;
 
   String get _profileUserId =>
       FirebaseAuth.instance.currentUser?.uid ?? widget.userId;
 
   bool get _hasCoverImage => _isValidCoverImageUrl(coverUrl);
+
+  void _handleProfileScroll() {
+    final nextTransition = ((_scrollController.offset - 90) / 90).clamp(
+      0.0,
+      1.0,
+    );
+
+    if ((nextTransition - _appBarTransition).abs() < 0.01) return;
+
+    setState(() {
+      _appBarTransition = nextTransition;
+    });
+  }
 
   bool _isValidCoverImageUrl(String url) {
     final uri = Uri.tryParse(url.trim());
@@ -109,14 +126,25 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
   List<Map<String, dynamic>> _parseLifeJourney(dynamic value) {
     if (value is! List) return [];
 
-    return value.whereType<Map>().map((item) {
-      return {
-        'year': (item['year'] ?? '').toString().trim(),
-        'title': (item['title'] ?? '').toString().trim(),
-      };
-    }).where((item) {
-      return item['year']!.isNotEmpty && item['title']!.isNotEmpty;
-    }).toList();
+    return value
+        .whereType<Map>()
+        .map((item) {
+          return {
+            'year': (item['year'] ?? '').toString().trim(),
+            'startYear': (item['startYear'] ?? item['year'] ?? '')
+                .toString()
+                .trim(),
+            'endYear': (item['endYear'] ?? '').toString().trim(),
+            'title': (item['title'] ?? '').toString().trim(),
+            'category': (item['category'] ?? 'Other').toString().trim(),
+            'isOngoing': item['isOngoing'] == true || item['ongoing'] == true,
+          };
+        })
+        .where((item) {
+          return (item['startYear'] as String).isNotEmpty &&
+              (item['title'] as String).isNotEmpty;
+        })
+        .toList();
   }
 
   void _applyUserData(Map<String, dynamic> data) {
@@ -131,6 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
       goal = _optionalProfileText(data, 'goal');
       interests = _optionalProfileText(data, 'interests');
       location = _optionalProfileText(data, 'location');
+      nationality = _optionalProfileText(data, 'nationality');
       relationship = _optionalProfileText(data, 'relationship');
       birthday = _formatBirthday(data['birthday']);
       lifeQuote = _optionalProfileText(data, 'lifeQuote');
@@ -174,6 +203,7 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleProfileScroll);
     _listenToUserData();
     loadProfile();
   }
@@ -202,6 +232,8 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
     try {
       routeObserver.unsubscribe(this);
     } catch (_) {}
+    _scrollController.removeListener(_handleProfileScroll);
+    _scrollController.dispose();
     _userSub?.cancel();
     super.dispose();
   }
@@ -213,9 +245,15 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
 
     if (pickedFile == null) return;
 
-    final file = File(pickedFile.path);
     final user = FirebaseAuth.instance.currentUser;
-    final imageUrl = await CloudinaryService.uploadImage(file);
+    final imageUrl = kIsWeb
+        ? await CloudinaryService.uploadImageBytes(
+            await pickedFile.readAsBytes(),
+            filename: pickedFile.name.isEmpty
+                ? 'profile_photo.jpg'
+                : pickedFile.name,
+          )
+        : await CloudinaryService.uploadImage(File(pickedFile.path));
 
     await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
       'photoUrl': imageUrl,
@@ -236,9 +274,15 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
     setState(() => _isUploadingCoverImage = true);
 
     try {
-      final file = File(pickedFile.path);
       final user = FirebaseAuth.instance.currentUser;
-      final imageUrl = await CloudinaryService.uploadImage(file);
+      final imageUrl = kIsWeb
+          ? await CloudinaryService.uploadImageBytes(
+              await pickedFile.readAsBytes(),
+              filename: pickedFile.name.isEmpty
+                  ? 'cover_photo.jpg'
+                  : pickedFile.name,
+            )
+          : await CloudinaryService.uploadImage(File(pickedFile.path));
 
       await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
         'coverUrl': imageUrl,
@@ -398,14 +442,27 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
+    final appBarBackground = Color.lerp(
+      Colors.transparent,
+      Colors.white,
+      _appBarTransition,
+    );
+    final appBarForeground = Color.lerp(
+      Colors.white,
+      Colors.black,
+      _appBarTransition,
+    )!;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text("Profile"),
-        backgroundColor: Colors.transparent,
+        backgroundColor: appBarBackground,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: IconThemeData(color: appBarForeground),
+        titleTextStyle: TextStyle(color: appBarForeground, fontSize: 20),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -420,6 +477,8 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
       ),
       body: ProfileScreenLayout(
         coverUrl: coverUrl,
+        scrollController: _scrollController,
+        onCoverTap: _hasCoverImage ? _openCoverViewer : _pickCoverImage,
         content: Container(
           width: double.infinity,
           decoration: const BoxDecoration(
@@ -443,6 +502,7 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
                 goal: goal,
                 interests: interests,
                 location: location,
+                nationality: nationality,
                 relationship: relationship,
                 birthday: birthday,
                 lifeQuote: lifeQuote,
@@ -453,9 +513,8 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => LifeJourneyDetailsScreen(
-                        lifeJourney: lifeJourney,
-                      ),
+                      builder: (_) =>
+                          LifeJourneyDetailsScreen(lifeJourney: lifeJourney),
                     ),
                   );
                 },
@@ -472,27 +531,22 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
             ],
           ),
         ),
-        coverActions: SizedBox(
-          height: 260,
-          width: double.infinity,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _hasCoverImage ? _openCoverViewer : _pickCoverImage,
+        coverActions: !_hasCoverImage
+            ? SizedBox(
+                height: 150,
+                width: double.infinity,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 70,
+                      child: Center(child: _buildCoverPlaceholder()),
+                    ),
+                  ],
                 ),
-              ),
-              if (!_hasCoverImage)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 70,
-                  child: Center(child: _buildCoverPlaceholder()),
-                ),
-            ],
-          ),
-        ),
+              )
+            : null,
       ),
     );
   }

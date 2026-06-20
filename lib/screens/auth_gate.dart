@@ -7,7 +7,9 @@ import 'home_screen.dart';
 import 'create_username_screen.dart';
 
 class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
+  final String? initialPostId;
+
+  const AuthGate({super.key, this.initialPostId});
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +25,7 @@ class AuthGate extends StatelessWidget {
 
         // not logged in
         if (!snapshot.hasData) {
-          return LoginScreen();
+          return LoginScreen(initialPostId: initialPostId);
         }
 
         final user = snapshot.data!;
@@ -46,10 +48,10 @@ class AuthGate extends StatelessWidget {
             if (data == null ||
                 data['username'] == null ||
                 data['username'] == '') {
-              return CreateUsernameScreen();
+              return CreateUsernameScreen(initialPostId: initialPostId);
             }
 
-            return HomeScreen();
+            return HomeScreen(initialPostId: initialPostId);
           },
         );
       },

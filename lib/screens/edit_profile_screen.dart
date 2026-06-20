@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -10,14 +11,30 @@ import 'home_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final bool completeOnSave;
+  final String? initialPostId;
 
-  const EditProfileScreen({super.key, this.completeOnSave = false});
+  const EditProfileScreen({
+    super.key,
+    this.completeOnSave = false,
+    this.initialPostId,
+  });
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  static const List<String> _journeyCategories = [
+    'Work',
+    'Education',
+    'Project',
+    'Achievement',
+    'Personal',
+    'Travel',
+    'Family',
+    'Other',
+  ];
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _bioController = TextEditingController();
   final TextEditingController _workController = TextEditingController();
@@ -25,6 +42,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController _goalController = TextEditingController();
   final TextEditingController _interestsController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _nationalityController = TextEditingController();
   final TextEditingController _relationshipController = TextEditingController();
   final TextEditingController _lifeQuoteController = TextEditingController();
   final List<_JourneyInput> _journeyInputs = [];
@@ -48,6 +66,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _goalController.addListener(_markProfileEdited);
     _interestsController.addListener(_markProfileEdited);
     _locationController.addListener(_markProfileEdited);
+    _nationalityController.addListener(_handleOptionalIdentityChanged);
     _relationshipController.addListener(_markProfileEdited);
     _lifeQuoteController.addListener(_markProfileEdited);
     _loadProfile();
@@ -65,6 +84,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void _markProfileEdited() {
     if (!_isApplyingProfileData) {
       _hasUserEditedProfileFields = true;
+    }
+  }
+
+  void _handleOptionalIdentityChanged() {
+    _markProfileEdited();
+    if (!_isApplyingProfileData && mounted) {
+      setState(() {});
     }
   }
 
@@ -105,6 +131,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _setLoadedText(_goalController, data['goal']);
         _setLoadedText(_interestsController, data['interests']);
         _setLoadedText(_locationController, data['location']);
+        _setLoadedText(_nationalityController, data['nationality']);
         _setLoadedText(_relationshipController, data['relationship']);
         _setLoadedText(_lifeQuoteController, data['lifeQuote']);
         _birthday = _parseBirthday(data['birthday']);
@@ -128,8 +155,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       setState(() => _isUploadingImage = true);
 
-      final file = File(picked.path);
-      final imageUrl = await CloudinaryService.uploadImage(file);
+      final imageUrl = kIsWeb
+          ? await CloudinaryService.uploadImageBytes(
+              await picked.readAsBytes(),
+              filename: picked.name.isEmpty ? 'profile_photo.jpg' : picked.name,
+            )
+          : await CloudinaryService.uploadImage(File(picked.path));
 
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -176,6 +207,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'goal': _goalController.text.trim(),
         'interests': _interestsController.text.trim(),
         'location': _locationController.text.trim(),
+        'nationality': _nationalityController.text.trim(),
         'relationship': _relationshipController.text.trim(),
         'birthday': _birthday == null ? '' : _birthdayStorageValue(_birthday!),
         'lifeQuote': _lifeQuoteController.text.trim(),
@@ -189,7 +221,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (widget.completeOnSave) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => HomeScreen()),
+          MaterialPageRoute(
+            builder: (_) => HomeScreen(initialPostId: widget.initialPostId),
+          ),
         );
       } else {
         Navigator.pop(context);
@@ -253,6 +287,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required String label,
     required String helperText,
     required IconData icon,
+    bool showClearButton = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,6 +317,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               borderSide: const BorderSide(color: Color(0xFF6D4CFF)),
             ),
             prefixIcon: Icon(icon, color: Colors.black54),
+            suffixIcon: showClearButton && controller.text.trim().isNotEmpty
+                ? IconButton(
+                    onPressed: controller.clear,
+                    icon: const Icon(Icons.close, size: 18),
+                    color: Colors.black45,
+                    tooltip: 'Clear $label',
+                  )
+                : null,
           ),
         ),
       ],
@@ -417,24 +460,53 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     if (value is List) {
       for (final item in value.whereType<Map>()) {
-        final year = (item['year'] ?? '').toString().trim();
+        final startYear = (item['startYear'] ?? item['year'] ?? '')
+            .toString()
+            .trim();
+        final endYear = (item['endYear'] ?? '').toString().trim();
         final title = (item['title'] ?? '').toString().trim();
-        if (year.isEmpty && title.isEmpty) continue;
+        final category = _normalizeJourneyCategory(item['category']);
+        final isOngoing =
+            item['isOngoing'] == true ||
+            (item['ongoing'] == true) ||
+            (endYear.isEmpty && startYear.isNotEmpty);
+        if (startYear.isEmpty && title.isEmpty) continue;
 
-        _journeyInputs.add(_JourneyInput(year: year, title: title));
+        _journeyInputs.add(
+          _JourneyInput(
+            startYear: startYear,
+            endYear: endYear,
+            title: title,
+            category: category,
+            isOngoing: isOngoing,
+          ),
+        );
       }
     }
   }
 
-  List<Map<String, String>> _lifeJourneyPayload() {
-    return _journeyInputs.map((input) {
-      return {
-        'year': input.yearController.text.trim(),
-        'title': input.titleController.text.trim(),
-      };
-    }).where((item) {
-      return item['year']!.isNotEmpty && item['title']!.isNotEmpty;
-    }).toList();
+  List<Map<String, dynamic>> _lifeJourneyPayload() {
+    return _journeyInputs
+        .map((input) {
+          final isOngoing = input.isOngoing;
+          return {
+            'startYear': input.startYearController.text.trim(),
+            'endYear': isOngoing ? '' : input.endYearController.text.trim(),
+            'title': input.titleController.text.trim(),
+            'category': input.category,
+            'isOngoing': isOngoing,
+          };
+        })
+        .where((item) {
+          return (item['startYear'] as String).isNotEmpty &&
+              (item['title'] as String).isNotEmpty;
+        })
+        .toList();
+  }
+
+  String _normalizeJourneyCategory(dynamic value) {
+    final category = (value ?? '').toString().trim();
+    return _journeyCategories.contains(category) ? category : 'Other';
   }
 
   void _addJourneyInput() {
@@ -509,33 +581,100 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget _buildJourneyInputRow(int index) {
     final input = _journeyInputs[index];
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 88,
-          child: TextField(
-            controller: input.yearController,
-            keyboardType: TextInputType.number,
-            decoration: _journeyInputDecoration('Year'),
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: input.titleController,
+                  decoration: _journeyInputDecoration('Title'),
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                onPressed: () => _removeJourneyInput(index),
+                icon: const Icon(Icons.close, size: 18),
+                color: Colors.black45,
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Remove journey item',
+              ),
+            ],
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: TextField(
-            controller: input.titleController,
-            decoration: _journeyInputDecoration('Title'),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: input.startYearController,
+                  keyboardType: TextInputType.number,
+                  decoration: _journeyInputDecoration('Start Year'),
+                ),
+              ),
+              if (!input.isOngoing) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: input.endYearController,
+                    keyboardType: TextInputType.number,
+                    decoration: _journeyInputDecoration('End Year'),
+                  ),
+                ),
+              ],
+            ],
           ),
-        ),
-        const SizedBox(width: 4),
-        IconButton(
-          onPressed: () => _removeJourneyInput(index),
-          icon: const Icon(Icons.close, size: 18),
-          color: Colors.black45,
-          visualDensity: VisualDensity.compact,
-          tooltip: 'Remove journey item',
-        ),
-      ],
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: input.category,
+            items: _journeyCategories
+                .map(
+                  (category) =>
+                      DropdownMenuItem(value: category, child: Text(category)),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                input.category = value;
+              });
+              _markProfileEdited();
+            },
+            decoration: _journeyInputDecoration('Category'),
+          ),
+          const SizedBox(height: 6),
+          CheckboxListTile(
+            value: input.isOngoing,
+            onChanged: (value) {
+              setState(() {
+                input.isOngoing = value ?? false;
+                if (input.isOngoing) {
+                  input.endYearController.clear();
+                }
+              });
+              _markProfileEdited();
+            },
+            contentPadding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text(
+              'Still Ongoing',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -544,10 +683,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       hintText: hintText,
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(
-        vertical: 14,
-        horizontal: 12,
-      ),
+      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: Colors.grey.shade200),
@@ -572,6 +708,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _goalController.dispose();
     _interestsController.dispose();
     _locationController.dispose();
+    _nationalityController.dispose();
     _relationshipController.dispose();
     _lifeQuoteController.dispose();
     for (final input in _journeyInputs) {
@@ -586,246 +723,267 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return PopScope(
       canPop: !widget.completeOnSave,
       child: Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: !widget.completeOnSave,
-        leading: widget.completeOnSave
-            ? null
-            : const BackButton(color: Colors.black),
-        centerTitle: true,
-        title: const Text(
-          'Edit Profile',
-          style: TextStyle(color: Colors.black),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          automaticallyImplyLeading: !widget.completeOnSave,
+          leading: widget.completeOnSave
+              ? null
+              : const BackButton(color: Colors.black),
+          centerTitle: true,
+          title: const Text(
+            'Edit Profile',
+            style: TextStyle(color: Colors.black),
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20.0,
-              vertical: 18.0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 8),
-                // Centered avatar
-                Center(
-                  child: SizedBox(
-                    height: 110,
-                    width: 110,
-                    child: _buildAvatar(110),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                const Text(
-                  'Tell your life story',
-                  style: TextStyle(
-                    color: Colors.black87,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Add the details that help people understand who you are.',
-                  style: TextStyle(
-                    color: Colors.black45,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                // Name field (modern rounded)
-                TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(
-                    hintText: 'Name',
-                    errorText: widget.completeOnSave ? _nameErrorText : null,
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 16,
-                      horizontal: 16,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF6D4CFF)),
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.person_outline,
-                      color: Colors.black54,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 18.0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  // Centered avatar
+                  Center(
+                    child: SizedBox(
+                      height: 110,
+                      width: 110,
+                      child: _buildAvatar(110),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 12),
+                  const SizedBox(height: 18),
 
-                // Bio field (multiline) — ensure text starts top-left and no overlapping icon
-                TextField(
-                  controller: _bioController,
-                  minLines: 4,
-                  maxLines: null,
-                  textAlignVertical: TextAlignVertical.top,
-                  decoration: InputDecoration(
-                    hintText: 'Bio',
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                    contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF6D4CFF)),
+                  const Text(
+                    'Tell your life story',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Add the details that help people understand who you are.',
+                    style: TextStyle(
+                      color: Colors.black45,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
 
-                const SizedBox(height: 12),
+                  const SizedBox(height: 18),
 
-                _buildProfileField(
-                  controller: _workController,
-                  label: 'Work',
-                  helperText: 'Your job, profession, or what you do every day',
-                  icon: Icons.work_outline,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildProfileField(
-                  controller: _familyController,
-                  label: 'Family',
-                  helperText: 'Tell people a little about your family',
-                  icon: Icons.family_restroom,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildProfileField(
-                  controller: _goalController,
-                  label: 'Goal',
-                  helperText: 'What are you currently working towards?',
-                  icon: Icons.flag_outlined,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildProfileField(
-                  controller: _interestsController,
-                  label: 'Interests',
-                  helperText: 'Hobbies, passions, and things you enjoy',
-                  icon: Icons.sports_soccer_outlined,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildProfileField(
-                  controller: _locationController,
-                  label: 'Location',
-                  helperText: 'Country, city, or place you live',
-                  icon: Icons.location_on_outlined,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildBirthdayField(),
-
-                const SizedBox(height: 16),
-
-                _buildProfileField(
-                  controller: _relationshipController,
-                  label: 'Relationship',
-                  helperText: 'Optional relationship status',
-                  icon: Icons.favorite_border,
-                ),
-
-                const SizedBox(height: 16),
-
-                _buildProfileField(
-                  controller: _lifeQuoteController,
-                  label: 'Life Quote',
-                  helperText: 'A quote or sentence that represents you',
-                  icon: Icons.format_quote,
-                ),
-
-                const SizedBox(height: 12),
-
-                _buildJourneyEditor(),
-
-                const SizedBox(height: 20),
-
-                // Save button (purple)
-                SizedBox(
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _saveChanges,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6D4CFF),
-                      shape: RoundedRectangleBorder(
+                  // Name field (modern rounded)
+                  TextField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      hintText: 'Name',
+                      errorText: widget.completeOnSave ? _nameErrorText : null,
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 16,
+                      ),
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF6D4CFF)),
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.person_outline,
+                        color: Colors.black54,
                       ),
                     ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2.0,
-                            ),
-                          )
-                        : const Text(
-                            'Save Changes',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
                   ),
-                ),
 
-                const SizedBox(height: 24),
-              ],
+                  const SizedBox(height: 12),
+
+                  // Bio field (multiline) — ensure text starts top-left and no overlapping icon
+                  TextField(
+                    controller: _bioController,
+                    minLines: 4,
+                    maxLines: null,
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: InputDecoration(
+                      hintText: 'Bio',
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                      contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF6D4CFF)),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  _buildProfileField(
+                    controller: _workController,
+                    label: 'Work',
+                    helperText:
+                        'Your job, profession, or what you do every day',
+                    icon: Icons.work_outline,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _familyController,
+                    label: 'Family',
+                    helperText: 'Tell people a little about your family',
+                    icon: Icons.family_restroom,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _goalController,
+                    label: 'Goal',
+                    helperText: 'What are you currently working towards?',
+                    icon: Icons.flag_outlined,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _interestsController,
+                    label: 'Interests',
+                    helperText: 'Hobbies, passions, and things you enjoy',
+                    icon: Icons.sports_soccer_outlined,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _locationController,
+                    label: 'Location',
+                    helperText: 'Country, city, or place you live',
+                    icon: Icons.location_on_outlined,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _nationalityController,
+                    label: 'Nationality',
+                    helperText: 'Optional nationality',
+                    icon: Icons.public_outlined,
+                    showClearButton: true,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildBirthdayField(),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _relationshipController,
+                    label: 'Relationship',
+                    helperText: 'Optional relationship status',
+                    icon: Icons.favorite_border,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  _buildProfileField(
+                    controller: _lifeQuoteController,
+                    label: 'Life Quote',
+                    helperText: 'A quote or sentence that represents you',
+                    icon: Icons.format_quote,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  _buildJourneyEditor(),
+
+                  const SizedBox(height: 20),
+
+                  // Save button (purple)
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _saveChanges,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6D4CFF),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.0,
+                              ),
+                            )
+                          : const Text(
+                              'Save Changes',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
 }
 
 class _JourneyInput {
-  final TextEditingController yearController;
+  final TextEditingController startYearController;
+  final TextEditingController endYearController;
   final TextEditingController titleController;
+  String category;
+  bool isOngoing;
 
-  _JourneyInput({String year = '', String title = ''})
-    : yearController = TextEditingController(text: year),
-      titleController = TextEditingController(text: title);
+  _JourneyInput({
+    String startYear = '',
+    String endYear = '',
+    String title = '',
+    this.category = 'Other',
+    this.isOngoing = true,
+  }) : startYearController = TextEditingController(text: startYear),
+       endYearController = TextEditingController(text: endYear),
+       titleController = TextEditingController(text: title);
 
   void dispose() {
-    yearController.dispose();
+    startYearController.dispose();
+    endYearController.dispose();
     titleController.dispose();
   }
 }
@@ -834,10 +992,7 @@ class _FieldLabel extends StatelessWidget {
   final String title;
   final String helperText;
 
-  const _FieldLabel({
-    required this.title,
-    required this.helperText,
-  });
+  const _FieldLabel({required this.title, required this.helperText});
 
   @override
   Widget build(BuildContext context) {

@@ -8,28 +8,36 @@ class ProfileScreenLayout extends StatelessWidget {
   final String coverUrl;
   final Widget content;
   final Widget? coverActions;
+  final VoidCallback? onCoverTap;
+  final ScrollController? scrollController;
 
   const ProfileScreenLayout({
     super.key,
     required this.coverUrl,
     required this.content,
     this.coverActions,
+    this.onCoverTap,
+    this.scrollController,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        ProfileBackground(coverUrl: coverUrl),
-        SafeArea(
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(children: [const SizedBox(height: 150), content]),
+    final topInset = MediaQuery.paddingOf(context).top;
+
+    return SingleChildScrollView(
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ProfileBackground(coverUrl: coverUrl, onTap: onCoverTap),
+          ?coverActions,
+          Padding(
+            padding: EdgeInsets.only(top: topInset + 150),
+            child: content,
           ),
-        ),
-        ?coverActions,
-      ],
+        ],
+      ),
     );
   }
 }

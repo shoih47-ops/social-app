@@ -1,286 +1,211 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
-import '../../screens/create_post_screen.dart';
-import '../../screens/post_detail_screen.dart';
-import '../../screens/post_video_fullscreen_page.dart';
-import '../../services/post_service.dart';
-
-import '../../models/post.dart';
+import '../../screens/my_moments_archive_screen.dart';
+import '../../services/post_navigation_service.dart';
 
 class ProfilePostsGrid extends StatelessWidget {
   const ProfilePostsGrid({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = FirebaseAuth.instance.currentUser!.uid;
+
     return Column(
       children: [
-        /// POSTS TITLE
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: const Text(
-              "My Moments",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Life Story',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
               ),
-            ),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MyMomentsArchiveScreen(
+                        userId: currentUserId,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('View All'),
+              ),
+            ],
           ),
         ),
-
         const SizedBox(height: 12),
-
-        /// POSTS GRID
-        StreamBuilder(
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
-              .collection("posts")
-              .where(
-                'userId',
-                isEqualTo: FirebaseAuth.instance.currentUser!.uid,
-              )
+              .collection('posts')
+              .where('userId', isEqualTo: currentUserId)
               .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
-              return const CircularProgressIndicator();
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              );
             }
 
             final posts = snapshot.data!.docs;
 
-            return ValueListenableBuilder<Set<String>>(
-              valueListenable: PostService.deletingVideoPostIds,
-              builder: (context, deletingVideoPostIds, _) {
-                final visiblePosts = posts.where((doc) {
-                  final post = doc.data();
-                  final type = post['type'] ?? 'image';
-                  return type != 'video' ||
-                      !deletingVideoPostIds.contains(doc.id);
-                }).toList();
+            final chronologicalPosts = posts.where(_hasCreatedAt).toList()
+              ..sort((a, b) {
+                final aDate = _createdAt(a)!;
+                final bDate = _createdAt(b)!;
+                return bDate.compareTo(aDate);
+              });
 
-                if (visiblePosts.isEmpty) {
-                  return const _MomentsEmptyState();
-                }
+            if (chronologicalPosts.isEmpty) {
+              return const _LifeStoryEmptyState();
+            }
 
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(14),
-                  itemCount: visiblePosts.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 1,
-                  ),
-                  itemBuilder: (context, index) {
-                    final doc = visiblePosts[index];
-                    final post = doc.data();
-                    final type = post['type'] ?? 'image';
-
-                    return GestureDetector(
-                      onTap: () {
-                        if (type == 'video') {
-                          Navigator.push(
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Material(
+                color: Colors.white,
+                child: Column(
+                  children: [
+                    for (
+                      var index = 0;
+                      index < chronologicalPosts.length;
+                      index++
+                    )
+                      _LifeStoryPreviewItem(
+                        post: chronologicalPosts[index].data(),
+                        showDivider: index < chronologicalPosts.length - 1,
+                        onTap: () {
+                          final doc = chronologicalPosts[index];
+                          PostNavigationService.openPostFromSnapshot(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => PostVideoFullscreenPage(
-                                post: Post.fromDocument(doc),
-                              ),
-                            ),
+                            postDoc: doc,
                           );
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PostDetailScreen(postId: doc.id),
-                            ),
-                          );
-                        }
-                      },
-                      child: _PostGridThumbnail(
-                        postId: doc.id,
-                        post: post,
-                        isVideo: type == 'video',
+                        },
                       ),
-                    );
-                  },
-                );
-              },
+                  ],
+                ),
+              ),
             );
           },
         ),
       ],
     );
   }
-}
 
-class _MomentsEmptyState extends StatelessWidget {
-  const _MomentsEmptyState();
+  static bool _hasCreatedAt(QueryDocumentSnapshot post) {
+    return _createdAt(post) != null;
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 28, 24, 34),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Share your first life moment ✨',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.black87,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Create your first post',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.black54,
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 18),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CreatePostScreen()),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6D4CFF),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              child: const Text(
-                'Create your first post',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  static DateTime? _createdAt(QueryDocumentSnapshot post) {
+    final data = post.data() as Map<String, dynamic>;
+    final value = data['createdAt'];
+
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+
+    return null;
   }
 }
 
-class _PostGridThumbnail extends StatelessWidget {
-  final String postId;
+class _LifeStoryPreviewItem extends StatelessWidget {
   final Map<String, dynamic> post;
-  final bool isVideo;
+  final bool showDivider;
+  final VoidCallback onTap;
 
-  const _PostGridThumbnail({
-    required this.postId,
+  const _LifeStoryPreviewItem({
     required this.post,
-    required this.isVideo,
+    required this.showDivider,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final type = (post['type'] ?? 'image').toString();
     final imageUrl = post['imageUrl'] as String?;
-    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+    final hasThumbnail = imageUrl != null && imageUrl.isNotEmpty;
+    final isVideo = type == 'video';
+    final text = (post['text'] ?? '').toString().trim();
+    final displayText = text.isNotEmpty ? text : _fallbackLabel(type);
     final createdAtText = _formatCreatedAt(post['createdAt']);
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Stack(
-        fit: StackFit.expand,
+    return InkWell(
+      onTap: onTap,
+      child: Column(
         children: [
-          if (hasImage && !isVideo)
-            Hero(
-              tag: postId,
-              flightShuttleBuilder:
-                  (
-                    flightContext,
-                    animation,
-                    flightDirection,
-                    fromHeroContext,
-                    toHeroContext,
-                  ) {
-                    return FadeTransition(
-                      opacity: animation.drive(
-                        CurveTween(curve: Curves.easeInOut),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (createdAtText != null) ...[
+                        Text(
+                          createdAtText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 12,
+                            height: 1.25,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                      Text(
+                        displayText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 14,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      child: toHeroContext.widget,
-                    );
-                  },
-              child: CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) =>
-                    const ColoredBox(color: Colors.black12),
-                errorWidget: (context, url, error) =>
-                    const ColoredBox(color: Colors.black12),
-              ),
-            )
-          else if (hasImage)
-            CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.cover,
-              placeholder: (context, url) =>
-                  const ColoredBox(color: Colors.black12),
-              errorWidget: (context, url, error) =>
-                  const ColoredBox(color: Colors.black12),
-            )
-          else if (isVideo)
-            const ColoredBox(color: Colors.black)
-          else
-            ColoredBox(
-              color: const Color(0xFFF2F2F2),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    post['text'] ?? '',
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
+                    ],
                   ),
                 ),
-              ),
+                if (hasThumbnail || isVideo) ...[
+                  const SizedBox(width: 14),
+                  _LifeStoryThumbnail(
+                    imageUrl: imageUrl,
+                    isVideo: isVideo,
+                  ),
+                ],
+              ],
             ),
-          if (isVideo)
-            const Center(
-              child: Icon(
-                Icons.play_circle_fill,
-                color: Colors.white70,
-                size: 30,
-              ),
-            ),
-          if (createdAtText != null)
-            Positioned(
-              left: 6,
-              bottom: 6,
-              child: _CreatedAtBadge(
-                text: createdAtText,
-                isMedia: hasImage || isVideo,
-              ),
+          ),
+          if (showDivider)
+            const Divider(
+              height: 1,
+              thickness: 1,
+              color: Color(0xFFEDEDF2),
             ),
         ],
       ),
     );
+  }
+
+  String _fallbackLabel(String type) {
+    if (type == 'video') return '🎥 Video';
+    if (type == 'text') return '📝 Text Post';
+    return '📷 Photo';
   }
 
   String? _formatCreatedAt(dynamic value) {
@@ -309,39 +234,77 @@ class _PostGridThumbnail extends StatelessWidget {
       'Nov',
       'Dec',
     ];
-    final hour = localDate.hour % 12 == 0 ? 12 : localDate.hour % 12;
-    final minute = localDate.minute.toString().padLeft(2, '0');
-    final period = localDate.hour >= 12 ? 'PM' : 'AM';
 
-    return '${months[localDate.month - 1]} ${localDate.day} • $hour:$minute $period';
+    return '${months[localDate.month - 1]} ${localDate.day}, ${localDate.year}';
   }
 }
 
-class _CreatedAtBadge extends StatelessWidget {
-  final String text;
-  final bool isMedia;
+class _LifeStoryThumbnail extends StatelessWidget {
+  final String? imageUrl;
+  final bool isVideo;
 
-  const _CreatedAtBadge({required this.text, required this.isMedia});
+  const _LifeStoryThumbnail({required this.imageUrl, required this.isVideo});
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isMedia
-            ? Colors.black.withValues(alpha: 0.58)
-            : Colors.white.withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(8),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: 76,
+        height: 76,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (imageUrl != null && imageUrl!.isNotEmpty)
+              CachedNetworkImage(
+                imageUrl: imageUrl!,
+                fit: BoxFit.cover,
+                placeholder: (context, url) =>
+                    const ColoredBox(color: Colors.black12),
+                errorWidget: (context, url, error) =>
+                    const ColoredBox(color: Colors.black12),
+              )
+            else
+              const ColoredBox(color: Colors.black87),
+            if (isVideo)
+              ColoredBox(
+                color: Colors.black.withValues(alpha: 0.22),
+                child: const Icon(
+                  Icons.play_circle_fill,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+          ],
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-        child: Text(
-          text,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: isMedia ? Colors.white : Colors.black87,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
+    );
+  }
+}
+
+class _LifeStoryEmptyState extends StatelessWidget {
+  const _LifeStoryEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+          child: Center(
+            child: Text(
+              'Your life story starts with your first post',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black54,
+                fontSize: 14,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),

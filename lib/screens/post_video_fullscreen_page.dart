@@ -12,6 +12,7 @@ import '../models/post.dart';
 import '../widgets/like_button.dart';
 import '../widgets/comment_button.dart';
 import '../utils/time_ago.dart';
+import '../utils/route_observer.dart';
 import 'comment_screen.dart';
 
 import '../screens/profile_screen.dart';
@@ -33,8 +34,12 @@ class PostVideoFullscreenPage extends StatefulWidget {
 }
 
 class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver, RouteAware {
   late final VideoPlayerController _controller;
+  ModalRoute<void>? _route;
+  bool _routeCovered = false;
+  bool _controllerDisposed = false;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   bool _showControls = true;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -58,6 +63,9 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     _enterFullscreen();
     if (widget.openComments) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showComments());
@@ -79,16 +87,41 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
       ..setLooping(false)
       ..setVolume(1.0)
       ..initialize().then((_) {
-        if (mounted) {
-          _duration = _controller.value.duration;
-          _controller.addListener(_onVideoChanged);
-          setState(() {});
+        if (!mounted || _controllerDisposed) return;
+        _duration = _controller.value.duration;
+        _controller.addListener(_onVideoChanged);
+        setState(() {});
+        if (_canPlayVideo) {
+          _controller.play();
         }
-        _controller.play();
       });
   }
 
-  void _showComments() {
+  bool get _canPlayVideo =>
+      mounted &&
+      !_controllerDisposed &&
+      !_routeCovered &&
+      _lifecycleState == AppLifecycleState.resumed;
+
+  Future<void> _pauseVideo() async {
+    if (_controllerDisposed || !_controller.value.isInitialized) return;
+    await _controller.pause();
+  }
+
+  Future<void> _prepareForNavigation() async {
+    _routeCovered = true;
+    await _pauseVideo();
+  }
+
+  void _resumeVideoIfAllowed() {
+    if (_canPlayVideo && _controller.value.isInitialized) {
+      _controller.play();
+    }
+  }
+
+  Future<void> _showComments() async {
+    if (!mounted) return;
+    await _prepareForNavigation();
     if (!mounted) return;
     showModalBottomSheet(
       context: context,
@@ -107,6 +140,63 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
         );
       },
     );
+  }
+
+  Future<void> _openProfile() async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid == null) return;
+
+    await _prepareForNavigation();
+    if (!mounted) return;
+
+    if (widget.post.userId == currentUid) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(userId: currentUid),
+        ),
+      );
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UserProfileScreen(userId: widget.post.userId),
+        ),
+      );
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of<void>(context);
+    if (route != null && route != _route) {
+      if (_route != null) routeObserver.unsubscribe(this);
+      _route = route;
+      routeObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    _routeCovered = true;
+    unawaited(_pauseVideo());
+  }
+
+  @override
+  void didPopNext() {
+    _routeCovered = false;
+    _resumeVideoIfAllowed();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+    if (state == AppLifecycleState.resumed) {
+      _resumeVideoIfAllowed();
+    } else {
+      unawaited(_pauseVideo());
+    }
   }
 
   Future<void> _handleDoubleTap() async {
@@ -234,6 +324,9 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    routeObserver.unsubscribe(this);
+    _controllerDisposed = true;
     _timeRefreshTimer?.cancel();
     try {
       _controller.removeListener(_onVideoChanged);
@@ -408,6 +501,7 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                         postOwnerId: widget.post.userId,
                         iconColor: Colors.white,
                         textColor: Colors.white70,
+                        onBeforeOpen: _prepareForNavigation,
                       ),
                     ],
                   ),
@@ -464,29 +558,7 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                             return Row(
                               children: [
                                 GestureDetector(
-                                  onTap: () {
-                                    final currentUid =
-                                        FirebaseAuth.instance.currentUser!.uid;
-
-                                    if (widget.post.userId == currentUid) {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              ProfileScreen(userId: currentUid),
-                                        ),
-                                      );
-                                    } else {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => UserProfileScreen(
-                                            userId: widget.post.userId,
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
+                                  onTap: _openProfile,
                                   child: Row(
                                     children: [
                                       CircleAvatar(

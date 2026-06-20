@@ -39,6 +39,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
   String? goal;
   String? interests;
   String? location;
+  String? nationality;
   String? relationship;
   String? birthday;
   String? lifeQuote;
@@ -49,6 +50,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
   final FollowService followService = FollowService();
   bool isFollowing = false;
   StreamSubscription<DocumentSnapshot>? _currentUserSub;
+  final ScrollController _scrollController = ScrollController();
+  double _appBarTransition = 0;
+
+  void _handleProfileScroll() {
+    final nextTransition = ((_scrollController.offset - 90) / 90).clamp(
+      0.0,
+      1.0,
+    );
+
+    if ((nextTransition - _appBarTransition).abs() < 0.01) return;
+
+    setState(() {
+      _appBarTransition = nextTransition;
+    });
+  }
 
   void _notify() {
     if (mounted) setState(() {});
@@ -57,6 +73,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleProfileScroll);
     loadUserData();
     // Listen to current user's doc for realtime 'following' updates so this
     // profile UI stays in sync with other parts of the app.
@@ -86,6 +103,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
     try {
       routeObserver.unsubscribe(this);
     } catch (_) {}
+    _scrollController.removeListener(_handleProfileScroll);
+    _scrollController.dispose();
     _currentUserSub?.cancel();
     super.dispose();
   }
@@ -135,6 +154,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
         goal = _optionalProfileText(data, 'goal');
         interests = _optionalProfileText(data, 'interests');
         location = _optionalProfileText(data, 'location');
+        nationality = _optionalProfileText(data, 'nationality');
         relationship = _optionalProfileText(data, 'relationship');
         birthday = _formatBirthday(data['birthday']);
         lifeQuote = _optionalProfileText(data, 'lifeQuote');
@@ -193,14 +213,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
   List<Map<String, dynamic>> _parseLifeJourney(dynamic value) {
     if (value is! List) return [];
 
-    return value.whereType<Map>().map((item) {
-      return {
-        'year': (item['year'] ?? '').toString().trim(),
-        'title': (item['title'] ?? '').toString().trim(),
-      };
-    }).where((item) {
-      return item['year']!.isNotEmpty && item['title']!.isNotEmpty;
-    }).toList();
+    return value
+        .whereType<Map>()
+        .map((item) {
+          return {
+            'year': (item['year'] ?? '').toString().trim(),
+            'startYear': (item['startYear'] ?? item['year'] ?? '')
+                .toString()
+                .trim(),
+            'endYear': (item['endYear'] ?? '').toString().trim(),
+            'title': (item['title'] ?? '').toString().trim(),
+            'category': (item['category'] ?? 'Other').toString().trim(),
+            'isOngoing': item['isOngoing'] == true || item['ongoing'] == true,
+          };
+        })
+        .where((item) {
+          return (item['startYear'] as String).isNotEmpty &&
+              (item['title'] as String).isNotEmpty;
+        })
+        .toList();
   }
 
   Future<void> _toggleFollow() async {
@@ -217,17 +248,59 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
+    final appBarBackground = Color.lerp(
+      Colors.transparent,
+      Colors.white,
+      _appBarTransition,
+    );
+    final appBarForeground = Color.lerp(
+      Colors.white,
+      Colors.black,
+      _appBarTransition,
+    )!;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(username.isEmpty ? "Profile" : username),
-        backgroundColor: Colors.transparent,
+        backgroundColor: appBarBackground,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20),
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: IconThemeData(color: appBarForeground),
+        titleTextStyle: TextStyle(color: appBarForeground, fontSize: 20),
       ),
       body: ProfileScreenLayout(
         coverUrl: coverUrl,
+        scrollController: _scrollController,
+        onCoverTap: coverUrl.isNotEmpty
+            ? () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => Scaffold(
+                      backgroundColor: Colors.black,
+                      body: SafeArea(
+                        top: false,
+                        bottom: false,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => Navigator.of(context).pop(),
+                          child: Center(
+                            child: InteractiveViewer(
+                              child: Image.network(
+                                coverUrl,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+            : null,
         content: Container(
           width: double.infinity,
           decoration: const BoxDecoration(
@@ -250,6 +323,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
                 goal: goal,
                 interests: interests,
                 location: location,
+                nationality: nationality,
                 relationship: relationship,
                 birthday: birthday,
                 lifeQuote: lifeQuote,
@@ -260,9 +334,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => LifeJourneyDetailsScreen(
-                        lifeJourney: lifeJourney,
-                      ),
+                      builder: (_) =>
+                          LifeJourneyDetailsScreen(lifeJourney: lifeJourney),
                     ),
                   );
                 },
@@ -276,48 +349,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
               const SizedBox(height: 30),
               UserProfilePostsGrid(userId: widget.userId),
               const SizedBox(height: 100),
-            ],
-          ),
-        ),
-        coverActions: SizedBox(
-          height: 260,
-          width: double.infinity,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    // If there's a cover image, show it full-screen.
-                    if (coverUrl.isNotEmpty) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => Scaffold(
-                            backgroundColor: Colors.black,
-                            body: SafeArea(
-                              top: false,
-                              bottom: false,
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => Navigator.of(context).pop(),
-                                child: Center(
-                                  child: InteractiveViewer(
-                                    child: Image.network(
-                                      coverUrl,
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ),
             ],
           ),
         ),

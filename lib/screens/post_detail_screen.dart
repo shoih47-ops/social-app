@@ -13,6 +13,7 @@ import 'user_profile_screen.dart';
 
 import '../services/notification_service.dart';
 import '../services/post_service.dart';
+import '../services/share_service.dart';
 
 import '../widgets/like_button.dart';
 import '../widgets/comment_button.dart';
@@ -132,12 +133,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   void sendReply(
     String commentId,
     String commentOwnerId,
-    String username,
     String text,
   ) async {
-    if (!text.startsWith('@$username')) {
-      text = '@$username $text';
-    }
+    if (text.isEmpty) return;
 
     final user = FirebaseAuth.instance.currentUser;
 
@@ -184,32 +182,26 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     String commentOwnerId,
     String username,
   ) {
-    final mentionText = '@$username ';
-    final controller = TextEditingController.fromValue(
-      TextEditingValue(
-        text: mentionText,
-        selection: TextSelection.collapsed(offset: mentionText.length),
-      ),
-    );
+    final controller = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Reply"),
+          title: Text("Reply to $username"),
           content: TextField(
             controller: controller,
-            decoration: const InputDecoration(hintText: "Write a reply..."),
+            decoration: const InputDecoration(hintText: "Write your reply..."),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cencel"),
+              child: const Text("Cancel"),
             ),
 
             TextButton(
               onPressed: () {
-                sendReply(commentId, commentOwnerId, username, controller.text);
+                sendReply(commentId, commentOwnerId, controller.text.trim());
                 Navigator.pop(context);
               },
               child: const Text("Send"),
@@ -480,6 +472,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               postId: widget.postId,
                               postOwnerId: data['userId'],
                             ),
+
+                            const SizedBox(width: 24),
+
+                            IconButton(
+                              tooltip: 'Share',
+                              onPressed: () {
+                                ShareService.showShareOptions(context, post);
+                              },
+                              icon: const Icon(Icons.ios_share_outlined),
+                              color: const Color(0xFF5B21B6),
+                            ),
                           ],
                         ),
 
@@ -664,144 +667,91 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                                                     CrossAxisAlignment.start,
                                                 children: [
                                                   if (replies.isNotEmpty)
-                                                    TextButton(
-                                                      style: TextButton.styleFrom(
-                                                        padding:
-                                                            EdgeInsets.zero,
-                                                        minimumSize: const Size(
-                                                          0,
-                                                          0,
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            left: 44,
+                                                            top: 2,
+                                                            bottom: 1,
+                                                          ),
+                                                      child: TextButton(
+                                                        style: TextButton.styleFrom(
+                                                          padding:
+                                                              EdgeInsets.zero,
+                                                          minimumSize:
+                                                              const Size(0, 0),
+                                                          tapTargetSize:
+                                                              MaterialTapTargetSize
+                                                                  .shrinkWrap,
+                                                          alignment: Alignment
+                                                              .centerLeft,
                                                         ),
-                                                        tapTargetSize:
-                                                            MaterialTapTargetSize
-                                                                .shrinkWrap,
-                                                        alignment: Alignment
-                                                            .centerLeft,
-                                                      ),
-                                                      onPressed: () {
-                                                        setState(() {
-                                                          _showReplies[commentId] =
-                                                              !(_showReplies[commentId] ??
-                                                                  false);
-                                                        });
-                                                      },
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 6,
-                                                              vertical: 2,
-                                                            ),
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _showReplies[commentId] =
+                                                                !(_showReplies[commentId] ??
+                                                                    false);
+                                                          });
+                                                        },
                                                         child: Text(
-                                                          show
-                                                              ? 'Hide replies'
-                                                              : 'View replies (${replies.length})',
+                                                          replies.length == 1
+                                                              ? '1 Reply'
+                                                              : '${replies.length} Replies',
                                                           style: TextStyle(
                                                             color: Colors
                                                                 .grey
-                                                                .shade500,
-                                                            fontSize: 11,
+                                                                .shade600,
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.w600,
                                                           ),
                                                         ),
                                                       ),
                                                     ),
 
                                                   if (show)
-                                                    Container(
-                                                      margin:
+                                                    Padding(
+                                                      padding:
                                                           const EdgeInsets.only(
-                                                            left: 56,
+                                                            left: 44,
+                                                            top: 1,
                                                           ),
-                                                      child: Row(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Container(
-                                                            width: 3,
-                                                            height: 48,
-                                                            decoration:
-                                                                BoxDecoration(
-                                                                  color: Colors
-                                                                      .grey
-                                                                      .shade300,
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        2,
-                                                                      ),
-                                                                ),
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 12,
-                                                          ),
-                                                          Expanded(
-                                                            child: Container(
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    vertical: 6,
-                                                                    horizontal:
-                                                                        0,
-                                                                  ),
-                                                              decoration: BoxDecoration(
-                                                                color: Colors
-                                                                    .grey
-                                                                    .shade50,
-                                                                borderRadius: const BorderRadius.only(
-                                                                  topRight:
-                                                                      Radius.circular(
-                                                                        8,
-                                                                      ),
-                                                                  bottomRight:
-                                                                      Radius.circular(
-                                                                        8,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                              child: Column(
-                                                                children: replies.map((
-                                                                  reply,
-                                                                ) {
-                                                                  final replyData =
-                                                                      reply
-                                                                          .data();
-                                                                  return Padding(
-                                                                    padding:
-                                                                        const EdgeInsets.only(
-                                                                          bottom:
-                                                                              4,
-                                                                        ),
-                                                                    child: ReplyTile(
-                                                                      replyData:
-                                                                          replyData,
-                                                                      onDelete: () async {
-                                                                        await FirebaseFirestore
-                                                                            .instance
-                                                                            .collection(
-                                                                              'posts',
-                                                                            )
-                                                                            .doc(
-                                                                              widget.postId,
-                                                                            )
-                                                                            .collection(
-                                                                              'comments',
-                                                                            )
-                                                                            .doc(
-                                                                              commentId,
-                                                                            )
-                                                                            .collection(
-                                                                              'replies',
-                                                                            )
-                                                                            .doc(
-                                                                              reply.id,
-                                                                            )
-                                                                            .delete();
-                                                                      },
-                                                                    ),
-                                                                  );
-                                                                }).toList(),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
+                                                      child: Column(
+                                                        children: replies.map((
+                                                          reply,
+                                                        ) {
+                                                          final replyData =
+                                                              reply.data();
+                                                          return ReplyTile(
+                                                            replyData:
+                                                                replyData,
+                                                            repliedToUsername:
+                                                                userData['username'] ??
+                                                                'Unknown',
+                                                            onDelete: () async {
+                                                              await FirebaseFirestore
+                                                                  .instance
+                                                                  .collection(
+                                                                    'posts',
+                                                                  )
+                                                                  .doc(
+                                                                    widget
+                                                                        .postId,
+                                                                  )
+                                                                  .collection(
+                                                                    'comments',
+                                                                  )
+                                                                  .doc(
+                                                                    commentId,
+                                                                  )
+                                                                  .collection(
+                                                                    'replies',
+                                                                  )
+                                                                  .doc(reply.id)
+                                                                  .delete();
+                                                            },
+                                                          );
+                                                        }).toList(),
                                                       ),
                                                     ),
                                                 ],

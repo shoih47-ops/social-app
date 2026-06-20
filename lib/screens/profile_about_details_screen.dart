@@ -6,6 +6,7 @@ class ProfileAboutDetailsScreen extends StatelessWidget {
   final String? goal;
   final String? interests;
   final String? location;
+  final String? nationality;
   final String? relationship;
   final String? birthday;
   final String? lifeQuote;
@@ -17,6 +18,7 @@ class ProfileAboutDetailsScreen extends StatelessWidget {
     this.goal,
     this.interests,
     this.location,
+    this.nationality,
     this.relationship,
     this.birthday,
     this.lifeQuote,
@@ -24,18 +26,28 @@ class ProfileAboutDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = [
-      _AboutDetailData(icon: '💼', label: 'Work', value: work),
-      _AboutDetailData(icon: '👨‍👩‍👧', label: 'Family', value: family),
-      _AboutDetailData(icon: '🎯', label: 'Goal', value: goal),
-      _AboutDetailData(icon: '⚽', label: 'Interests', value: interests),
-      _AboutDetailData(icon: '📍', label: 'Location', value: location),
-      _AboutDetailData(icon: '❤️', label: 'Relationship', value: relationship),
-      _AboutDetailData(icon: '🎂', label: 'Birthday', value: birthday),
-      _AboutDetailData(icon: '💬', label: 'Life Quote', value: lifeQuote),
-    ].where((row) {
-      return row.value != null && row.value!.trim().isNotEmpty;
-    }).toList();
+    final rows =
+        [
+          _AboutDetailData(icon: '💼', label: 'Work', value: work),
+          _AboutDetailData(icon: '👨‍👩‍👧', label: 'Family', value: family),
+          _AboutDetailData(icon: '🎯', label: 'Goal', value: goal),
+          _AboutDetailData(icon: '⚽', label: 'Interests', value: interests),
+          _AboutDetailData(icon: '📍', label: 'Location', value: location),
+          _AboutDetailData(
+            icon: '🌐',
+            label: 'Nationality',
+            value: nationality,
+          ),
+          _AboutDetailData(
+            icon: '❤️',
+            label: 'Relationship',
+            value: relationship,
+          ),
+          _AboutDetailData(icon: '🎂', label: 'Birthday', value: birthday),
+          _AboutDetailData(icon: '💬', label: 'Life Quote', value: lifeQuote),
+        ].where((row) {
+          return row.value != null && row.value!.trim().isNotEmpty;
+        }).toList();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -44,10 +56,7 @@ class ProfileAboutDetailsScreen extends StatelessWidget {
         elevation: 0,
         leading: const BackButton(color: Colors.black),
         centerTitle: true,
-        title: const Text(
-          'About',
-          style: TextStyle(color: Colors.black),
-        ),
+        title: const Text('About', style: TextStyle(color: Colors.black)),
       ),
       body: SafeArea(
         child: ListView(

@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import 'post_detail_screen.dart';
-import 'post_video_fullscreen_page.dart';
-import '../models/post.dart';
+import '../services/post_navigation_service.dart';
 import '../utils/time_ago.dart';
-import 'comment_screen.dart';
 
 import 'user_profile_screen.dart';
 
@@ -255,73 +252,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                     ),
                                   ),
                                 );
-                              } else if (type == 'comment') {
-                                final postDoc = await FirebaseFirestore.instance
-                                    .collection('posts')
-                                    .doc(data['postId'])
-                                    .get();
-                                if (postDoc.exists &&
-                                    (postDoc.data()
-                                            as Map<String, dynamic>)['type'] ==
-                                        'video') {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => PostVideoFullscreenPage(
-                                        post: Post.fromDocument(postDoc),
-                                        openComments: true,
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                final postOwnerId = postDoc.data() != null
-                                    ? (postDoc.data()
-                                          as Map<String, dynamic>)['userId']
-                                    : '';
-
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => CommentScreen(
-                                      postId: data['postId'],
-                                      postOwnerId: postOwnerId ?? '',
-                                    ),
-                                  ),
-                                );
                               } else {
-                                if (type == 'like' || type == 'reply') {
-                                  final postDoc = await FirebaseFirestore
-                                      .instance
-                                      .collection('posts')
-                                      .doc(data['postId'])
-                                      .get();
-                                  if (postDoc.exists &&
-                                      (postDoc.data()
-                                              as Map<
-                                                String,
-                                                dynamic
-                                              >)['type'] ==
-                                          'video') {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => PostVideoFullscreenPage(
-                                          post: Post.fromDocument(postDoc),
-                                          openComments: type == 'reply',
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
-                                }
-                                Navigator.push(
+                                await PostNavigationService.openPost(
                                   context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PostDetailScreen(
-                                      postId: data['postId'],
-                                    ),
-                                  ),
+                                  postId: data['postId'] ?? '',
+                                  openComments:
+                                      type == 'comment' || type == 'reply',
                                 );
                               }
                             },

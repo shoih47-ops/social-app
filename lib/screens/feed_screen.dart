@@ -9,6 +9,7 @@ import '../utils/time_ago.dart';
 import '../widgets/post_card.dart';
 
 import 'create_post_screen.dart';
+import 'user_search_screen.dart';
 
 class FeedScreen extends StatelessWidget {
   const FeedScreen({super.key});
@@ -23,6 +24,17 @@ class FeedScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFF8F8FA),
 
       appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: 'Search users',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const UserSearchScreen()),
+              );
+            },
+            icon: const Icon(Icons.search),
+          ),
+        ],
         title: GestureDetector(
           onTap: () {
             Navigator.push(
@@ -31,16 +43,35 @@ class FeedScreen extends StatelessWidget {
             );
           },
           child: Container(
-            height: 40,
+            height: 42,
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(20),
+              color: const Color(0xFFF1EEF8),
+              borderRadius: BorderRadius.circular(21),
+              border: Border.all(color: const Color(0xFFE5DDF6)),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.centerLeft,
-            child: const Text(
-              "How was your day?",
-              style: TextStyle(color: Colors.grey),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.edit_note_rounded,
+                  color: Color(0xFF8B5CF6),
+                  size: 21,
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Share a real moment from your life...",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Color(0xFF6B6475),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -95,7 +126,7 @@ class FeedScreen extends StatelessWidget {
                 await Future.delayed(const Duration(seconds: 1));
               },
               child: ListView.builder(
-                padding: const EdgeInsets.only(top: 12, bottom: 100),
+                padding: const EdgeInsets.only(top: 10, bottom: 100),
                 physics: const BouncingScrollPhysics(),
                 cacheExtent: 1000,
                 itemCount: posts.length + 1,

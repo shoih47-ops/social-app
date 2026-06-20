@@ -8,6 +8,7 @@ class ProfileAboutCard extends StatelessWidget {
   final String? goal;
   final String? interests;
   final String? location;
+  final String? nationality;
   final String? relationship;
   final String? birthday;
   final String? lifeQuote;
@@ -19,6 +20,7 @@ class ProfileAboutCard extends StatelessWidget {
     this.goal,
     this.interests,
     this.location,
+    this.nationality,
     this.relationship,
     this.birthday,
     this.lifeQuote,
@@ -26,28 +28,31 @@ class ProfileAboutCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final allRows = [
-      _AboutRowData(icon: '💼', label: 'Work', value: work),
-      _AboutRowData(icon: '👨‍👩‍👧', label: 'Family', value: family),
-      _AboutRowData(icon: '🎯', label: 'Goal', value: goal),
-      _AboutRowData(icon: '⚽', label: 'Interests', value: interests),
-      _AboutRowData(icon: '📍', label: 'Location', value: location),
-      _AboutRowData(icon: '❤️', label: 'Relationship', value: relationship),
-      _AboutRowData(icon: '🎂', label: 'Birthday', value: birthday),
-      _AboutRowData(icon: '💬', label: 'Life Quote', value: lifeQuote),
-    ].where((row) {
-      return row.value != null && row.value!.trim().isNotEmpty;
-    }).toList();
+    final allRows =
+        [
+          _AboutRowData(icon: '💼', label: 'Work', value: work),
+          _AboutRowData(icon: '👨‍👩‍👧', label: 'Family', value: family),
+          _AboutRowData(icon: '🎯', label: 'Goal', value: goal),
+          _AboutRowData(icon: '⚽', label: 'Interests', value: interests),
+          _AboutRowData(icon: '📍', label: 'Location', value: location),
+          _AboutRowData(icon: '🌐', label: 'Nationality', value: nationality),
+          _AboutRowData(icon: '❤️', label: 'Relationship', value: relationship),
+          _AboutRowData(icon: '🎂', label: 'Birthday', value: birthday),
+          _AboutRowData(icon: '💬', label: 'Life Quote', value: lifeQuote),
+        ].where((row) {
+          return row.value != null && row.value!.trim().isNotEmpty;
+        }).toList();
 
     if (allRows.isEmpty) return const SizedBox.shrink();
 
-    final priorityRows = [
-      _AboutRowData(icon: '💼', label: 'Work', value: work),
-      _AboutRowData(icon: '🎯', label: 'Goal', value: goal),
-      _AboutRowData(icon: '📍', label: 'Location', value: location),
-    ].where((row) {
-      return row.value != null && row.value!.trim().isNotEmpty;
-    }).toList();
+    final priorityRows =
+        [
+          _AboutRowData(icon: '💼', label: 'Work', value: work),
+          _AboutRowData(icon: '🎯', label: 'Goal', value: goal),
+          _AboutRowData(icon: '📍', label: 'Location', value: location),
+        ].where((row) {
+          return row.value != null && row.value!.trim().isNotEmpty;
+        }).toList();
 
     final summaryRows = [
       ...priorityRows,
@@ -96,6 +101,7 @@ class ProfileAboutCard extends StatelessWidget {
                       goal: goal,
                       interests: interests,
                       location: location,
+                      nationality: nationality,
                       relationship: relationship,
                       birthday: birthday,
                       lifeQuote: lifeQuote,

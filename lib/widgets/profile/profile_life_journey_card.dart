@@ -16,9 +16,9 @@ class ProfileLifeJourneyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = lifeJourney
         .map(_LifeJourneyItem.fromMap)
-        .where((item) => item.year.isNotEmpty && item.title.isNotEmpty)
+        .where((item) => item.startYear.isNotEmpty && item.title.isNotEmpty)
         .toList()
-      ..sort((a, b) => b.year.compareTo(a.year));
+      ..sort((a, b) => b.startYearValue.compareTo(a.startYearValue));
 
     if (items.isEmpty) return const SizedBox.shrink();
 
@@ -97,15 +97,31 @@ class _LifeJourneyTile extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Text(
-          '${item.year} • ${item.title}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.black87,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${item.icon} ${item.yearRange}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -113,15 +129,77 @@ class _LifeJourneyTile extends StatelessWidget {
 }
 
 class _LifeJourneyItem {
-  final String year;
+  final String startYear;
+  final String endYear;
   final String title;
+  final String category;
+  final bool isOngoing;
 
-  const _LifeJourneyItem({required this.year, required this.title});
+  const _LifeJourneyItem({
+    required this.startYear,
+    required this.endYear,
+    required this.title,
+    required this.category,
+    required this.isOngoing,
+  });
+
+  String get yearRange {
+    if (isOngoing || endYear.isEmpty) return '$startYear - Present';
+    return '$startYear - $endYear';
+  }
+
+  int get startYearValue => int.tryParse(startYear) ?? 0;
+
+  String get icon {
+    switch (category) {
+      case 'Work':
+        return '💼';
+      case 'Education':
+        return '🎓';
+      case 'Project':
+        return '🚀';
+      case 'Achievement':
+        return '🏆';
+      case 'Personal':
+        return '👤';
+      case 'Travel':
+        return '✈️';
+      case 'Family':
+        return '👨‍👩‍👧';
+      default:
+        return '📌';
+    }
+  }
 
   factory _LifeJourneyItem.fromMap(Map<String, dynamic> data) {
+    final startYear = (data['startYear'] ?? data['year'] ?? '')
+        .toString()
+        .trim();
+    final endYear = (data['endYear'] ?? '').toString().trim();
+
     return _LifeJourneyItem(
-      year: (data['year'] ?? '').toString().trim(),
+      startYear: startYear,
+      endYear: endYear,
       title: (data['title'] ?? '').toString().trim(),
+      category: _normalizeCategory(data['category']),
+      isOngoing: data['isOngoing'] == true ||
+          data['ongoing'] == true ||
+          (endYear.isEmpty && startYear.isNotEmpty),
     );
+  }
+
+  static String _normalizeCategory(dynamic value) {
+    final category = (value ?? '').toString().trim();
+    const categories = {
+      'Work',
+      'Education',
+      'Project',
+      'Achievement',
+      'Personal',
+      'Travel',
+      'Family',
+      'Other',
+    };
+    return categories.contains(category) ? category : 'Other';
   }
 }

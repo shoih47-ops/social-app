@@ -97,22 +97,16 @@ class _CommentScreenState extends State<CommentScreen> {
     String commentOwnerId,
     String username,
   ) {
-    final mentionText = '@$username ';
-    final controller = TextEditingController.fromValue(
-      TextEditingValue(
-        text: mentionText,
-        selection: TextSelection.collapsed(offset: mentionText.length),
-      ),
-    );
+    final controller = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Reply"),
+          title: Text("Reply to $username"),
           content: TextField(
             controller: controller,
-            decoration: const InputDecoration(hintText: "Write a reply..."),
+            decoration: const InputDecoration(hintText: "Write your reply..."),
           ),
           actions: [
             TextButton(
@@ -121,7 +115,7 @@ class _CommentScreenState extends State<CommentScreen> {
             ),
             TextButton(
               onPressed: () {
-                sendReply(commentId, commentOwnerId, username, controller.text);
+                sendReply(commentId, commentOwnerId, controller.text.trim());
                 Navigator.pop(context);
               },
               child: const Text("Send"),
@@ -135,12 +129,9 @@ class _CommentScreenState extends State<CommentScreen> {
   void sendReply(
     String commentId,
     String commentOwnerId,
-    String username,
     String text,
   ) async {
-    if (!text.startsWith('@$username')) {
-      text = '@$username $text';
-    }
+    if (text.isEmpty) return;
 
     final user = FirebaseAuth.instance.currentUser;
 
@@ -239,7 +230,6 @@ class _CommentScreenState extends State<CommentScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Comment card
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
@@ -286,7 +276,6 @@ class _CommentScreenState extends State<CommentScreen> {
                                 ),
                               ),
 
-                              // Replies toggle & list
                               const SizedBox(height: 4),
                               StreamBuilder<QuerySnapshot>(
                                 stream: FirebaseFirestore.instance
@@ -306,122 +295,71 @@ class _CommentScreenState extends State<CommentScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       if (replies.isNotEmpty)
-                                        TextButton(
-                                          style: TextButton.styleFrom(
-                                            padding: EdgeInsets.zero,
-                                            minimumSize: const Size(0, 0),
-                                            tapTargetSize: MaterialTapTargetSize
-                                                .shrinkWrap,
-                                            alignment: Alignment.centerLeft,
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 44,
+                                            top: 2,
+                                            bottom: 1,
                                           ),
-                                          onPressed: () {
-                                            setState(() {
-                                              _showReplies[comment.id] =
-                                                  !(_showReplies[comment.id] ??
-                                                      false);
-                                            });
-                                          },
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 2,
+                                          child: TextButton(
+                                            style: TextButton.styleFrom(
+                                              padding: EdgeInsets.zero,
+                                              minimumSize: const Size(0, 0),
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                              alignment: Alignment.centerLeft,
                                             ),
+                                            onPressed: () {
+                                              setState(() {
+                                                _showReplies[comment.id] =
+                                                    !(_showReplies[comment
+                                                            .id] ??
+                                                        false);
+                                              });
+                                            },
                                             child: Text(
-                                              show
-                                                  ? 'Hide replies'
-                                                  : 'View replies (${replies.length})',
+                                              replies.length == 1
+                                                  ? '1 Reply'
+                                                  : '${replies.length} Replies',
                                               style: TextStyle(
-                                                color: Colors.grey.shade500,
-                                                fontSize: 11,
+                                                color: Colors.grey.shade600,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                           ),
                                         ),
 
                                       if (show)
-                                        Container(
-                                          margin: const EdgeInsets.only(
-                                            left: 56,
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 44,
+                                            top: 1,
                                           ),
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              // Short connector line
-                                              Container(
-                                                width: 3,
-                                                height: 48,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey.shade300,
-                                                  borderRadius:
-                                                      BorderRadius.circular(2),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        vertical: 6,
-                                                        horizontal: 0,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey.shade50,
-                                                    borderRadius:
-                                                        const BorderRadius.only(
-                                                          topRight:
-                                                              Radius.circular(
-                                                                8,
-                                                              ),
-                                                          bottomRight:
-                                                              Radius.circular(
-                                                                8,
-                                                              ),
-                                                        ),
-                                                  ),
-                                                  child: Column(
-                                                    children: replies.map((
-                                                      reply,
-                                                    ) {
-                                                      final replyData =
-                                                          reply.data()
-                                                              as Map<
-                                                                String,
-                                                                dynamic
-                                                              >;
-                                                      return Padding(
-                                                        padding:
-                                                            const EdgeInsets.only(
-                                                              bottom: 4,
-                                                            ),
-                                                        child: ReplyTile(
-                                                          replyData: replyData,
-                                                          onDelete: () async {
-                                                            await FirebaseFirestore
-                                                                .instance
-                                                                .collection(
-                                                                  'posts',
-                                                                )
-                                                                .doc(
-                                                                  widget.postId,
-                                                                )
-                                                                .collection(
-                                                                  'comments',
-                                                                )
-                                                                .doc(comment.id)
-                                                                .collection(
-                                                                  'replies',
-                                                                )
-                                                                .doc(reply.id)
-                                                                .delete();
-                                                          },
-                                                        ),
-                                                      );
-                                                    }).toList(),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                          child: Column(
+                                            children: replies.map((reply) {
+                                              final replyData =
+                                                  reply.data()
+                                                      as Map<String, dynamic>;
+                                              return ReplyTile(
+                                                replyData: replyData,
+                                                repliedToUsername:
+                                                    user['username'] ??
+                                                    'Unknown',
+                                                onDelete: () async {
+                                                  await FirebaseFirestore
+                                                      .instance
+                                                      .collection('posts')
+                                                      .doc(widget.postId)
+                                                      .collection('comments')
+                                                      .doc(comment.id)
+                                                      .collection('replies')
+                                                      .doc(reply.id)
+                                                      .delete();
+                                                },
+                                              );
+                                            }).toList(),
                                           ),
                                         ),
                                     ],

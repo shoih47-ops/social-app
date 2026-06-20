@@ -91,6 +91,40 @@ class CloudinaryService {
     }
   }
 
+  /// Uploads a video from bytes. Used by Flutter Web where dart:io File APIs
+  /// and native video compression are unavailable.
+  static Future<String> uploadVideoBytes(
+    List<int> bytes, {
+    String filename = 'video.mp4',
+    void Function(double progress)? onProgress,
+  }) async {
+    final url = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$_cloudName/video/upload',
+    );
+
+    final request = http.MultipartRequest('POST', url);
+    request.fields['upload_preset'] = _uploadPreset;
+    request.fields['resource_type'] = 'video';
+    request.fields['quality'] = 'auto';
+    request.files.add(
+      _multipartBytesWithProgress(
+        bytes,
+        filename: filename,
+        onProgress: onProgress,
+      ),
+    );
+
+    final response = await request.send();
+    final responseData = await response.stream.bytesToString();
+    final result = jsonDecode(responseData) as Map<String, dynamic>;
+
+    if (response.statusCode >= 400 || result['secure_url'] == null) {
+      throw Exception(result['error']?['message'] ?? 'Video upload failed');
+    }
+
+    return result['secure_url'] as String;
+  }
+
   /// Upload bytes as an image by writing to a temp file and reusing uploadImage.
   static Future<String> uploadBytesAsImage(
     List<int> bytes, {
@@ -105,6 +139,36 @@ class CloudinaryService {
       await tmp.delete();
     } catch (_) {}
     return url;
+  }
+
+  static Future<String> uploadImageBytes(
+    List<int> bytes, {
+    String filename = 'image.jpg',
+    void Function(double progress)? onProgress,
+  }) async {
+    final url = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$_cloudName/image/upload',
+    );
+
+    final request = http.MultipartRequest('POST', url);
+    request.fields['upload_preset'] = _uploadPreset;
+    request.files.add(
+      _multipartBytesWithProgress(
+        bytes,
+        filename: filename,
+        onProgress: onProgress,
+      ),
+    );
+
+    final response = await request.send();
+    final responseData = await response.stream.bytesToString();
+    final result = jsonDecode(responseData) as Map<String, dynamic>;
+
+    if (response.statusCode >= 400 || result['secure_url'] == null) {
+      throw Exception(result['error']?['message'] ?? 'Image upload failed');
+    }
+
+    return result['secure_url'] as String;
   }
 
   static Future<http.MultipartFile> _multipartFileWithProgress(
@@ -134,5 +198,14 @@ class CloudinaryService {
           ? file.uri.pathSegments.last
           : 'upload',
     );
+  }
+
+  static http.MultipartFile _multipartBytesWithProgress(
+    List<int> bytes, {
+    required String filename,
+    void Function(double progress)? onProgress,
+  }) {
+    onProgress?.call(1);
+    return http.MultipartFile.fromBytes('file', bytes, filename: filename);
   }
 }

@@ -31,8 +31,17 @@ class CommentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const primaryColor = Color(0xFF8B5CF6);
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final actionStyle = TextStyle(
+      color: Colors.grey.shade600,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      height: 1.2,
+    );
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -58,17 +67,18 @@ class CommentTile extends StatelessWidget {
             },
 
             child: CircleAvatar(
-              radius: 18,
+              radius: 17,
+              backgroundColor: const Color(0xFFF3E8FF),
               backgroundImage: photoUrl != null && photoUrl!.isNotEmpty
                   ? NetworkImage(photoUrl!)
                   : null,
               child: (photoUrl == null || photoUrl!.isEmpty)
-                  ? const Icon(Icons.person)
+                  ? const Icon(Icons.person, size: 18, color: primaryColor)
                   : null,
             ),
           ),
 
-          const SizedBox(width: 10),
+          const SizedBox(width: 9),
 
           Expanded(
             child: Column(
@@ -98,38 +108,71 @@ class CommentTile extends StatelessWidget {
 
                   child: Text(
                     username,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: Color(0xFF1F1F23),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                    ),
                   ),
-                ),
-
-                const SizedBox(height: 3),
-
-                Text(text, softWrap: true, overflow: TextOverflow.visible),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  time,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
 
                 const SizedBox(height: 2),
 
-                GestureDetector(
-                  onTap: onReply,
-                  child: const Text(
-                    "Reply",
-                    style: TextStyle(color: Colors.blue, fontSize: 12),
+                Text(
+                  text,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: const TextStyle(
+                    color: Color(0xFF202124),
+                    fontSize: 14,
+                    height: 1.32,
                   ),
+                ),
+
+                const SizedBox(height: 6),
+
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 5,
+                  runSpacing: 2,
+                  children: [
+                    Text(time, style: actionStyle),
+                    Text('·', style: actionStyle),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onLike,
+                      child: Text(
+                        likeCount > 0 ? '❤️ $likeCount' : '♡ 0',
+                        style: actionStyle.copyWith(
+                          color: isLiked ? Colors.red : Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                    Text('·', style: actionStyle),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onReply,
+                      child: Text(
+                        'Reply',
+                        style: actionStyle.copyWith(color: primaryColor),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
 
-          if (userId == FirebaseAuth.instance.currentUser!.uid)
+          if (userId == currentUserId)
             PopupMenuButton<String>(
               padding: EdgeInsets.zero,
-              icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+              constraints: const BoxConstraints(),
+              icon: Icon(
+                Icons.more_horiz,
+                size: 18,
+                color: Colors.grey.shade500,
+              ),
               onSelected: (value) {
                 if (value == 'delete') {
                   onDelete();
@@ -139,37 +182,6 @@ class CommentTile extends StatelessWidget {
                 PopupMenuItem(value: 'delete', child: Text('Delete Comment')),
               ],
             ),
-
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: onLike,
-                  icon: Icon(
-                    isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: isLiked ? Colors.red : Colors.grey,
-                    size: 22,
-                  ),
-                ),
-
-                const SizedBox(height: 2),
-
-                if (likeCount > 0)
-                  Text(
-                    '$likeCount',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ],
       ),
     );

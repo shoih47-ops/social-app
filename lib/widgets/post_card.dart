@@ -1,12 +1,13 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:social_app/services/post_service.dart';
-import 'package:video_player/video_player.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/post.dart';
 import '../screens/post_video_fullscreen_page.dart';
@@ -15,9 +16,10 @@ import 'like_button.dart';
 import 'comment_button.dart';
 import '../screens/user_profile_screen.dart';
 import '../screens/profile_screen.dart';
-import '../screens/post_detail_screen.dart';
 import '../services/follow_service.dart';
+import '../services/post_navigation_service.dart';
 import '../services/report_service.dart';
+import '../services/share_service.dart';
 
 class PostCard extends StatefulWidget {
   final Post post;
@@ -67,39 +69,80 @@ class _PostCardState extends State<PostCard> {
     super.dispose();
   }
 
-  Widget _buildMetaChip(String label) {
+  Widget _buildCategoryBadge(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3E8FF),
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFFEEE7FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD8C7FF)),
       ),
       child: Text(
         label,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          color: Color(0xFF6D28D9),
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+          color: Color(0xFF5B21B6),
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
   }
 
-  Widget _buildMoodCategoryChips() {
-    final chips = <Widget>[
-      if (widget.post.mood.trim().isNotEmpty)
-        _buildMetaChip(widget.post.mood.trim()),
-      if (widget.post.category.trim().isNotEmpty)
-        _buildMetaChip(widget.post.category.trim()),
-    ];
+  Widget _buildMoodText(String label) {
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Color(0xFF615A6F),
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
 
-    if (chips.isEmpty) return const SizedBox.shrink();
+  Widget _buildMoodCategoryRow() {
+    final mood = widget.post.mood.trim();
+    final category = widget.post.category.trim();
+
+    if (mood.isEmpty && category.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Wrap(spacing: 6, runSpacing: 4, children: chips),
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 7,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (category.isNotEmpty) _buildCategoryBadge(category),
+          if (category.isNotEmpty && mood.isNotEmpty)
+            const Text(
+              "\u2022",
+              style: TextStyle(
+                color: Color(0xFF9A92A8),
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          if (mood.isNotEmpty) _buildMoodText(mood),
+        ],
+      ),
+    );
+  }
+
+  void _openVideoPost() {
+    debugPrint('VIDEO TAP DETECTED');
+    debugPrint('post id: ${widget.post.id}');
+    debugPrint('video url: ${widget.post.videoUrl}');
+    debugPrint('isWeb: $kIsWeb, platform: $defaultTargetPlatform');
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostVideoFullscreenPage(post: widget.post),
+      ),
     );
   }
 
@@ -111,33 +154,24 @@ class _PostCardState extends State<PostCard> {
     return GestureDetector(
       onTap: () {
         if (widget.post.type == 'video' && widget.post.videoUrl.isNotEmpty) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PostVideoFullscreenPage(post: widget.post),
-            ),
-          );
+          _openVideoPost();
         } else {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PostDetailScreen(postId: widget.post.id),
-            ),
-          );
+          PostNavigationService.openPost(context, postId: widget.post.id);
         }
       },
 
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
         decoration: BoxDecoration(
           color: const Color(0xFFFFFEFE),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFF0EDF4)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.black.withValues(alpha: 0.045),
+              blurRadius: 16,
+              offset: const Offset(0, 7),
             ),
           ],
         ),
@@ -183,8 +217,9 @@ class _PostCardState extends State<PostCard> {
                       snapshot.data!.data() as Map<String, dynamic>;
 
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
+                    padding: const EdgeInsets.only(bottom: 4),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         CircleAvatar(
                           radius: 22,
@@ -213,12 +248,13 @@ class _PostCardState extends State<PostCard> {
                               Text(
                                 userData['username'] ?? "user",
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w800,
                                   fontSize: 16,
+                                  color: Color(0xFF201B27),
                                 ),
                               ),
 
-                              const SizedBox(height: 3),
+                              const SizedBox(height: 4),
 
                               Text(
                                 TimeAgoHelper.format(
@@ -226,18 +262,18 @@ class _PostCardState extends State<PostCard> {
                                   display: TimeAgoDisplay.feed,
                                 ),
                                 style: const TextStyle(
-                                  color: Colors.black54,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w400,
+                                  color: Color(0xFF7A7284),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
 
-                              _buildMoodCategoryChips(),
+                              _buildMoodCategoryRow(),
                             ],
                           ),
                         ),
 
-                        const SizedBox(width: 18),
+                        const SizedBox(width: 10),
 
                         if (currentUser != null &&
                             currentUser!.uid != widget.post.userId)
@@ -279,21 +315,29 @@ class _PostCardState extends State<PostCard> {
 
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 7,
+                                    horizontal: 10,
+                                    vertical: 5,
                                   ),
 
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF3E8FF),
-                                    borderRadius: BorderRadius.circular(20),
+                                    color: isFollowing
+                                        ? const Color(0xFFF6F2FF)
+                                        : const Color(0xFF8B5CF6),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: const Color(0xFFDCCEFF),
+                                    ),
                                   ),
 
                                   child: Text(
                                     isFollowing ? "Following" : "Follow",
 
-                                    style: const TextStyle(
-                                      color: Color(0xFF8B5CF6),
-                                      fontWeight: FontWeight.bold,
+                                    style: TextStyle(
+                                      color: isFollowing
+                                          ? const Color(0xFF7C3AED)
+                                          : Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                 ),
@@ -301,7 +345,7 @@ class _PostCardState extends State<PostCard> {
                             },
                           ),
 
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 4),
 
                         if (currentUser == null ||
                             currentUser!.uid != widget.post.userId)
@@ -337,7 +381,7 @@ class _PostCardState extends State<PostCard> {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
             // Text Post
             if (widget.post.text.isNotEmpty)
@@ -347,12 +391,12 @@ class _PostCardState extends State<PostCard> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 16,
-                  height: 1.6,
-                  color: Colors.black,
+                  height: 1.55,
+                  color: Color(0xFF27222E),
                 ),
               ),
 
-            const SizedBox(height: 14),
+            const SizedBox(height: 13),
 
             /// IMAGE or VIDEO (POST)
             /// IMAGE POST
@@ -397,6 +441,8 @@ class _PostCardState extends State<PostCard> {
               )
             else if (widget.post.type == 'video')
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.post.videoUrl.isNotEmpty ? _openVideoPost : null,
                 onDoubleTap: () {
                   PostService.toggleLike(widget.post.id);
                 },
@@ -414,7 +460,9 @@ class _PostCardState extends State<PostCard> {
                             child: SizedBox(
                               width: _videoController!.value.size.width,
                               height: _videoController!.value.size.height,
-                              child: VideoPlayer(_videoController!),
+                              child: AbsorbPointer(
+                                child: VideoPlayer(_videoController!),
+                              ),
                             ),
                           )
                         : Container(
@@ -427,11 +475,11 @@ class _PostCardState extends State<PostCard> {
                 ),
               ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             /// ACTIONS
             Container(
-              padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+              padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
               decoration: BoxDecoration(
                 border: Border(
                   top: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
@@ -446,11 +494,20 @@ class _PostCardState extends State<PostCard> {
                     postId: widget.post.id,
                     postOwnerId: widget.post.userId,
                   ),
+                  const SizedBox(width: 16),
+                  IconButton(
+                    tooltip: 'Share',
+                    onPressed: () {
+                      ShareService.showShareOptions(context, widget.post);
+                    },
+                    icon: const Icon(Icons.ios_share_outlined),
+                    color: const Color(0xFF5B21B6),
+                  ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
           ],
         ),
       ),

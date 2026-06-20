@@ -5,7 +5,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'home_screen.dart';
 
 class CreateUsernameScreen extends StatefulWidget {
-  const CreateUsernameScreen({super.key});
+  final String? initialPostId;
+
+  const CreateUsernameScreen({super.key, this.initialPostId});
 
   @override
   _CreateUsernameScreenState createState() => _CreateUsernameScreenState();
@@ -55,7 +57,9 @@ class _CreateUsernameScreenState extends State<CreateUsernameScreen> {
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => HomeScreen()),
+      MaterialPageRoute(
+        builder: (_) => HomeScreen(initialPostId: widget.initialPostId),
+      ),
     );
   }
 
