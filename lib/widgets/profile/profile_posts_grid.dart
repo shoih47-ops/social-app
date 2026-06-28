@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../screens/my_moments_archive_screen.dart';
+import '../../screens/profile_screen.dart';
+import '../../screens/user_profile_screen.dart';
 import '../../services/post_navigation_service.dart';
 
 class ProfilePostsGrid extends StatelessWidget {
@@ -139,6 +141,7 @@ class _LifeStoryPreviewItem extends StatelessWidget {
     final text = (post['text'] ?? '').toString().trim();
     final displayText = text.isNotEmpty ? text : _fallbackLabel(type);
     final createdAtText = _formatCreatedAt(post['createdAt']);
+    final taggedUserIds = _taggedUserIds(post['taggedUserIds']);
 
     return InkWell(
       onTap: onTap,
@@ -178,6 +181,8 @@ class _LifeStoryPreviewItem extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (taggedUserIds.isNotEmpty)
+                        _LifeStoryTaggedAvatars(userIds: taggedUserIds),
                     ],
                   ),
                 ),
@@ -237,6 +242,187 @@ class _LifeStoryPreviewItem extends StatelessWidget {
 
     return '${months[localDate.month - 1]} ${localDate.day}, ${localDate.year}';
   }
+
+  List<String> _taggedUserIds(dynamic value) {
+    if (value is! List) return const [];
+
+    return value
+        .map((id) => id.toString().trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+}
+
+class _LifeStoryTaggedAvatars extends StatefulWidget {
+  final List<String> userIds;
+
+  const _LifeStoryTaggedAvatars({required this.userIds});
+
+  @override
+  State<_LifeStoryTaggedAvatars> createState() =>
+      _LifeStoryTaggedAvatarsState();
+}
+
+class _LifeStoryTaggedAvatarsState extends State<_LifeStoryTaggedAvatars> {
+  late Future<List<_LifeStoryTaggedPerson>> _people;
+
+  @override
+  void initState() {
+    super.initState();
+    _people = _loadPeople();
+  }
+
+  @override
+  void didUpdateWidget(_LifeStoryTaggedAvatars oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_sameIds(oldWidget.userIds, widget.userIds)) {
+      _people = _loadPeople();
+    }
+  }
+
+  bool _sameIds(List<String> first, List<String> second) {
+    if (first.length != second.length) return false;
+    for (var index = 0; index < first.length; index++) {
+      if (first[index] != second[index]) return false;
+    }
+    return true;
+  }
+
+  Future<List<_LifeStoryTaggedPerson>> _loadPeople() async {
+    final idsToLoad = widget.userIds.take(3);
+    final documents = await Future.wait(
+      idsToLoad.map(
+        (id) => FirebaseFirestore.instance.collection('users').doc(id).get(),
+      ),
+    );
+
+    return documents.where((document) => document.exists).map((document) {
+      final data = document.data() ?? const <String, dynamic>{};
+      return _LifeStoryTaggedPerson(
+        userId: document.id,
+        photoUrl: _firstText([data['photoUrl'], data['photo']]),
+      );
+    }).toList();
+  }
+
+  String _firstText(List<dynamic> values) {
+    for (final value in values) {
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return '';
+  }
+
+  void _openProfile(_LifeStoryTaggedPerson person) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final page = person.userId == currentUserId
+        ? ProfileScreen(userId: person.userId)
+        : UserProfileScreen(userId: person.userId);
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remainingCount = widget.userIds.length - widget.userIds.take(3).length;
+
+    return FutureBuilder<List<_LifeStoryTaggedPerson>>(
+      future: _people,
+      builder: (context, snapshot) {
+        final people = snapshot.data ?? const <_LifeStoryTaggedPerson>[];
+        if (people.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: SizedBox(
+            height: 24,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 22.0 + (people.length - 1) * 14.0,
+                  height: 22,
+                  child: Stack(
+                    children: [
+                      for (var index = 0; index < people.length; index++)
+                        Positioned(
+                          left: index * 14.0,
+                          child: _LifeStoryTaggedAvatar(
+                            person: people[index],
+                            onTap: () => _openProfile(people[index]),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (remainingCount > 0) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '+$remainingCount',
+                    style: const TextStyle(
+                      color: Color(0xFF6D28D9),
+                      fontSize: 11,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LifeStoryTaggedAvatar extends StatelessWidget {
+  final _LifeStoryTaggedPerson person;
+  final VoidCallback onTap;
+
+  const _LifeStoryTaggedAvatar({
+    required this.person,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = person.photoUrl.isNotEmpty;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 22,
+        height: 22,
+        padding: const EdgeInsets.all(1.2),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: CircleAvatar(
+          backgroundColor: const Color(0xFFEDE9FE),
+          backgroundImage: hasPhoto ? NetworkImage(person.photoUrl) : null,
+          child: hasPhoto
+              ? null
+              : const Icon(
+                  Icons.person,
+                  size: 12,
+                  color: Color(0xFF6D28D9),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LifeStoryTaggedPerson {
+  final String userId;
+  final String photoUrl;
+
+  const _LifeStoryTaggedPerson({
+    required this.userId,
+    required this.photoUrl,
+  });
 }
 
 class _LifeStoryThumbnail extends StatelessWidget {

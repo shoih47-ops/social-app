@@ -7,6 +7,8 @@ import 'services/fcm_service.dart';
 import 'services/share_service.dart';
 import 'utils/route_observer.dart';
 
+final navigatorKey = GlobalKey<NavigatorState>();
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -16,6 +18,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  FcmService.instance.attachNavigator(navigatorKey);
   await FcmService.instance.initialize();
   runApp(MyApp(initialPostId: ShareService.postIdFromInitialLink()));
 }
@@ -29,6 +32,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Journa',
       debugShowCheckedModeBanner: false,
       home: AuthGate(initialPostId: initialPostId),

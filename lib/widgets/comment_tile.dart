@@ -13,6 +13,7 @@ class CommentTile extends StatelessWidget {
   final bool isLiked;
   final int likeCount;
   final String userId;
+  final String postOwnerId;
   final String? photoUrl;
 
   const CommentTile({
@@ -26,6 +27,7 @@ class CommentTile extends StatelessWidget {
     required this.isLiked,
     required this.likeCount,
     required this.userId,
+    required this.postOwnerId,
     this.photoUrl,
   });
 
@@ -33,6 +35,8 @@ class CommentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFF8B5CF6);
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final canDelete = currentUserId != null &&
+        (userId == currentUserId || postOwnerId == currentUserId);
     final actionStyle = TextStyle(
       color: Colors.grey.shade600,
       fontSize: 12,
@@ -164,7 +168,7 @@ class CommentTile extends StatelessWidget {
             ),
           ),
 
-          if (userId == currentUserId)
+          if (canDelete)
             PopupMenuButton<String>(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),

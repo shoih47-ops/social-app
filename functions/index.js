@@ -1,13 +1,25 @@
 const {initializeApp} = require("firebase-admin/app");
-const {getFirestore, FieldValue} = require("firebase-admin/firestore");
+const {getFirestore, FieldPath, FieldValue} = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
 const {logger} = require("firebase-functions");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {onRequest} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 
 initializeApp();
 
 const db = getFirestore();
+
+const DAILY_REMINDER_MESSAGES = [
+  "Hi {name}, hope you have a wonderful day. 🌿",
+  "Hello {name}, today might become a memory worth keeping.",
+  "Hi {name}, if something meaningful happens today, you can save or share it here.",
+  "Hello {name}, every day tells a story. Don't forget to keep yours.",
+  "Hi {name}, may today give you something small and beautiful to remember.",
+  "Hello {name}, take a quiet moment for yourself today.",
+];
+const DEFAULT_REMINDER_MINUTES = 19 * 60;
+const REMINDER_SEND_WINDOW_MINUTES = 20;
 
 exports.postPreview = onRequest(async (req, res) => {
   const postId = postIdFromRequest(req.path);
@@ -62,8 +74,10 @@ exports.sendPushForNotification = onDocumentCreated(
     const toUserId = event.params.userId;
     const notificationId = event.params.notificationId;
     const notification = snap.data() || {};
+    const notificationType =
+      notification.notificationType || notification.type || "";
 
-    const fromUserId = notification.fromUserId || "";
+    const fromUserId = notification.senderId || notification.fromUserId || "";
     if (fromUserId && fromUserId === toUserId) return;
 
     const userSnap = await db.collection("users").doc(toUserId).get();
@@ -78,15 +92,21 @@ exports.sendPushForNotification = onDocumentCreated(
     }
 
     const fromUsername = await getFromUsername(notification, fromUserId);
-    const body = buildBody(notification.type, fromUsername);
+    const body = buildBody(notificationType, fromUsername);
+    const postId = notification.postId || "";
+    const postType = await getPostType(notification, postId);
 
     const data = stringifyData({
-      type: notification.type,
+      postId,
+      postType,
+      senderId: fromUserId,
+      receiverId: toUserId,
+      notificationType,
+      type: notificationType,
       notificationId,
       toUserId,
       fromUserId,
       fromUsername,
-      postId: notification.postId,
       commentId: notification.commentId,
       replyId: notification.replyId,
     });
@@ -132,12 +152,252 @@ exports.sendPushForNotification = onDocumentCreated(
   },
 );
 
+exports.sendDailyReminderNotifications = onSchedule(
+  {
+    schedule: "every 15 minutes",
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const localTime = localTimeInfo("Asia/Kuala_Lumpur");
+    const today = localTime.dateKey;
+    const currentMinutes = localTime.minutesSinceMidnight;
+    let checked = 0;
+    let attempted = 0;
+    let sent = 0;
+    let skippedMissingToken = 0;
+    let skippedAlreadySent = 0;
+    let skippedNotDue = 0;
+    let failed = 0;
+    let lastDoc = null;
+
+    logger.info("Daily reminder job started", {
+      date: today,
+      currentMinutes,
+      schedule: "every 15 minutes",
+    });
+
+    do {
+      let query = db.collection("users")
+        .where("dailyRemindersEnabled", "==", true)
+        .orderBy(FieldPath.documentId())
+        .limit(500);
+
+      if (lastDoc) {
+        query = query.startAfter(lastDoc);
+      }
+
+      const usersSnap = await query.get();
+      if (usersSnap.empty) break;
+
+      const sendPromises = [];
+      checked += usersSnap.size;
+
+      for (const userDoc of usersSnap.docs) {
+        const user = userDoc.data() || {};
+        const userId = userDoc.id;
+        const token = cleanText(user.fcmToken);
+
+        if (!token) {
+          skippedMissingToken += 1;
+          logger.info("Skipping daily reminder: missing FCM token", {userId});
+          continue;
+        }
+
+        if (user.dailyReminderLastSentDate === today) {
+          skippedAlreadySent += 1;
+          logger.info("Skipping daily reminder: already sent today", {
+            userId,
+            date: today,
+          });
+          continue;
+        }
+
+        const scheduledMinutes = reminderMinutes(user);
+        if (!isReminderDue(currentMinutes, scheduledMinutes)) {
+          skippedNotDue += 1;
+          logger.info("Skipping daily reminder: selected time is not due", {
+            userId,
+            currentMinutes,
+            scheduledMinutes,
+          });
+          continue;
+        }
+
+        const name = reminderName(user);
+        const body = randomReminderMessage(name);
+
+        sendPromises.push(
+          sendDailyReminder({
+            userId,
+            token,
+            body,
+            today,
+            scheduledMinutes,
+          }),
+        );
+      }
+
+      attempted += sendPromises.length;
+      const results = await Promise.all(sendPromises);
+      for (const result of results) {
+        if (result.sent) {
+          sent += 1;
+        } else {
+          failed += 1;
+        }
+      }
+      lastDoc = usersSnap.docs[usersSnap.docs.length - 1];
+    } while (lastDoc);
+
+    logger.info("Daily reminders processed", {
+      date: today,
+      checked,
+      attempted,
+      sent,
+      skippedMissingToken,
+      skippedAlreadySent,
+      skippedNotDue,
+      failed,
+    });
+  },
+);
+
+async function sendDailyReminder({
+  userId,
+  token,
+  body,
+  today,
+  scheduledMinutes,
+}) {
+  try {
+    const messageId = await getMessaging().send({
+      token,
+      notification: {
+        title: "Journa",
+        body,
+      },
+      data: stringifyData({
+        notificationType: "dailyReminder",
+        type: "dailyReminder",
+        receiverId: userId,
+        toUserId: userId,
+      }),
+      android: {
+        priority: "normal",
+        notification: {
+          sound: "default",
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+          },
+        },
+      },
+    });
+
+    await db.collection("users").doc(userId).set({
+      dailyReminderLastSentDate: today,
+      dailyReminderLastSentAt: FieldValue.serverTimestamp(),
+      dailyReminderLastSentScheduledMinutes: scheduledMinutes,
+    }, {merge: true});
+
+    logger.info("Daily reminder sent", {
+      userId,
+      date: today,
+      scheduledMinutes,
+      messageId,
+    });
+
+    return {sent: true};
+  } catch (error) {
+    logger.error("Failed to send daily reminder", {
+      userId,
+      code: error.code,
+      message: error.message,
+    });
+
+    if (isInvalidTokenError(error)) {
+      await db.collection("users").doc(userId).set({
+        fcmToken: FieldValue.delete(),
+        fcmTokenUpdatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+    }
+
+    return {sent: false};
+  }
+}
+
 async function getFromUsername(notification, fromUserId) {
   if (notification.fromUsername) return notification.fromUsername;
   if (!fromUserId) return "Someone";
 
   const fromUserSnap = await db.collection("users").doc(fromUserId).get();
   return fromUserSnap.get("username") || "Someone";
+}
+
+async function getPostType(notification, postId) {
+  if (notification.postType) return String(notification.postType);
+  if (!postId) return "";
+
+  const postSnap = await db.collection("posts").doc(postId).get();
+  return postSnap.exists ? String(postSnap.get("type") || "") : "";
+}
+
+function reminderName(user) {
+  return cleanText(user.displayName) ||
+    cleanText(user.name) ||
+    cleanText(user.username) ||
+    "there";
+}
+
+function reminderMinutes(user) {
+  const value = Number(user.dailyReminderTimeMinutes);
+  if (Number.isInteger(value) && value >= 0 && value < 24 * 60) {
+    return value;
+  }
+  return DEFAULT_REMINDER_MINUTES;
+}
+
+function isReminderDue(currentMinutes, scheduledMinutes) {
+  const elapsed = currentMinutes - scheduledMinutes;
+  return elapsed >= 0 && elapsed <= REMINDER_SEND_WINDOW_MINUTES;
+}
+
+function randomReminderMessage(name) {
+  const template = DAILY_REMINDER_MESSAGES[
+    Math.floor(Math.random() * DAILY_REMINDER_MESSAGES.length)
+  ];
+  return template.replace("{name}", name);
+}
+
+function localDateKey(timeZone) {
+  return localTimeInfo(timeZone).dateKey;
+}
+
+function localTimeInfo(timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return {
+    dateKey: `${values.year}-${values.month}-${values.day}`,
+    minutesSinceMidnight: Number(values.hour) * 60 + Number(values.minute),
+  };
 }
 
 async function postUsername(post) {
@@ -161,6 +421,8 @@ function buildBody(type, fromUsername) {
       return `${fromUsername} started following you`;
     case "reply":
       return `${fromUsername} replied to your comment`;
+    case "tagged":
+      return `${fromUsername} tagged you in a moment.`;
     default:
       return `${fromUsername} sent you a notification`;
   }

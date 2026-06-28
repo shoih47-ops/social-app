@@ -1,12 +1,15 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/notification_service.dart';
+
 import '../services/post_service.dart';
 import '../services/report_service.dart';
-import 'dart:async';
+import '../services/share_service.dart';
 
 import '../models/post.dart';
 import '../widgets/like_button.dart';
@@ -34,30 +37,39 @@ class PostVideoFullscreenPage extends StatefulWidget {
 }
 
 class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
-    with TickerProviderStateMixin, WidgetsBindingObserver, RouteAware {
+    with WidgetsBindingObserver, RouteAware {
   late final VideoPlayerController _controller;
   ModalRoute<void>? _route;
   bool _routeCovered = false;
   bool _controllerDisposed = false;
+  bool _isDisposed = false;
+  bool _videoListenerAttached = false;
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
   bool _showControls = true;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isMuted = false;
   String get _caption => widget.post.text.trim();
-  late final AnimationController _heartController;
-  late final AnimationController _dismissController;
+  static const double _maxVideoZoom = 3;
+  double _videoScale = 1;
+  double _videoScaleStart = 1;
+  Offset _videoOffset = Offset.zero;
   Timer? _timeRefreshTimer;
   // vertical drag to dismiss (not used currently)
 
   void _onVideoChanged() {
-    if (!mounted) return;
+    if (_isDisposed || !mounted || _controllerDisposed) return;
     final pos = _controller.value.position;
     final dur = _controller.value.duration;
-    setState(() {
+    _setStateIfMounted(() {
       _position = pos;
       _duration = dur;
     });
+  }
+
+  void _setStateIfMounted(VoidCallback update) {
+    if (_isDisposed || !mounted) return;
+    setState(update);
   }
 
   @override
@@ -70,27 +82,18 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
     if (widget.openComments) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showComments());
     }
-    _heartController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _dismissController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
     _timeRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (mounted) {
-        setState(() {});
-      }
+      _setStateIfMounted(() {});
     });
     _controller = VideoPlayerController.network(widget.post.videoUrl)
       ..setLooping(false)
       ..setVolume(1.0)
       ..initialize().then((_) {
-        if (!mounted || _controllerDisposed) return;
+        if (_isDisposed || !mounted || _controllerDisposed) return;
         _duration = _controller.value.duration;
         _controller.addListener(_onVideoChanged);
-        setState(() {});
+        _videoListenerAttached = true;
+        _setStateIfMounted(() {});
         if (_canPlayVideo) {
           _controller.play();
         }
@@ -99,16 +102,20 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
 
   bool get _canPlayVideo =>
       mounted &&
+      !_isDisposed &&
       !_controllerDisposed &&
       !_routeCovered &&
       _lifecycleState == AppLifecycleState.resumed;
 
   Future<void> _pauseVideo() async {
-    if (_controllerDisposed || !_controller.value.isInitialized) return;
+    if (_isDisposed || _controllerDisposed || !_controller.value.isInitialized) {
+      return;
+    }
     await _controller.pause();
   }
 
   Future<void> _prepareForNavigation() async {
+    if (_isDisposed) return;
     _routeCovered = true;
     await _pauseVideo();
   }
@@ -120,9 +127,9 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   }
 
   Future<void> _showComments() async {
-    if (!mounted) return;
+    if (_isDisposed || !mounted) return;
     await _prepareForNavigation();
-    if (!mounted) return;
+    if (_isDisposed || !mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -143,11 +150,12 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   }
 
   Future<void> _openProfile() async {
+    if (_isDisposed) return;
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     if (currentUid == null) return;
 
     await _prepareForNavigation();
-    if (!mounted) return;
+    if (_isDisposed || !mounted) return;
 
     if (widget.post.userId == currentUid) {
       await Navigator.push(
@@ -179,18 +187,21 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
 
   @override
   void didPushNext() {
+    if (_isDisposed) return;
     _routeCovered = true;
     unawaited(_pauseVideo());
   }
 
   @override
   void didPopNext() {
+    if (_isDisposed) return;
     _routeCovered = false;
     _resumeVideoIfAllowed();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isDisposed) return;
     _lifecycleState = state;
     if (state == AppLifecycleState.resumed) {
       _resumeVideoIfAllowed();
@@ -199,50 +210,70 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
     }
   }
 
-  Future<void> _handleDoubleTap() async {
-    // animate heart
-    try {
-      _heartController.forward(from: 0.0);
-    } catch (_) {}
+  void _resetVideoZoom() {
+    _setStateIfMounted(() {
+      _videoScale = 1;
+      _videoScaleStart = 1;
+      _videoOffset = Offset.zero;
+    });
+  }
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final postRef = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.post.id);
-    final doc = await postRef.get();
-    final data = doc.data() ?? {};
-    final List likes = List.from(data['likes'] ?? []);
-
-    final alreadyLiked = likes.contains(user.uid);
-    if (alreadyLiked) {
-      await postRef.update({
-        'likes': FieldValue.arrayRemove([user.uid]),
-      });
-    } else {
-      await postRef.update({
-        'likes': FieldValue.arrayUnion([user.uid]),
-      });
-
-      // send notification
-      if (widget.post.userId != user.uid) {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        final username = userDoc.data()?['username'] ?? 'Someone';
-        unawaited(
-          sendNotification(
-            toUserId: widget.post.userId,
-            type: 'like',
-            fromUserId: user.uid,
-            fromUsername: username,
-            postId: widget.post.id,
-          ),
-        );
-      }
+  Size _fittedVideoSize(Size viewport, double aspectRatio) {
+    if (viewport.width <= 0 || viewport.height <= 0 || aspectRatio <= 0) {
+      return viewport;
     }
+
+    final viewportAspectRatio = viewport.width / viewport.height;
+    if (aspectRatio > viewportAspectRatio) {
+      return Size(viewport.width, viewport.width / aspectRatio);
+    }
+    return Size(viewport.height * aspectRatio, viewport.height);
+  }
+
+  Offset _clampVideoOffset({
+    required Offset offset,
+    required Size viewport,
+    required Size videoSize,
+    required double scale,
+  }) {
+    if (scale <= 1) return Offset.zero;
+
+    final scaledWidth = videoSize.width * scale;
+    final scaledHeight = videoSize.height * scale;
+    final maxDx = math.max(0.0, (scaledWidth - viewport.width) / 2);
+    final maxDy = math.max(0.0, (scaledHeight - viewport.height) / 2);
+
+    return Offset(
+      offset.dx.clamp(-maxDx, maxDx).toDouble(),
+      offset.dy.clamp(-maxDy, maxDy).toDouble(),
+    );
+  }
+
+  void _handleVideoScaleStart(ScaleStartDetails details) {
+    _videoScaleStart = _videoScale;
+  }
+
+  void _handleVideoScaleUpdate(
+    ScaleUpdateDetails details,
+    Size viewport,
+    Size videoSize,
+  ) {
+    final nextScale = (_videoScaleStart * details.scale)
+        .clamp(1.0, _maxVideoZoom)
+        .toDouble();
+    final nextOffset = _clampVideoOffset(
+      offset: nextScale <= 1
+          ? Offset.zero
+          : _videoOffset + details.focalPointDelta,
+      viewport: viewport,
+      videoSize: videoSize,
+      scale: nextScale,
+    );
+
+    _setStateIfMounted(() {
+      _videoScale = nextScale;
+      _videoOffset = nextOffset;
+    });
   }
 
   Future<void> _enterFullscreen() async {
@@ -254,8 +285,10 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   }
 
   void _togglePlay() {
-    if (!_controller.value.isInitialized) return;
-    setState(() {
+    if (_isDisposed || _controllerDisposed || !_controller.value.isInitialized) {
+      return;
+    }
+    _setStateIfMounted(() {
       if (_controller.value.isPlaying) {
         _controller.pause();
       } else {
@@ -266,8 +299,10 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   }
 
   void _toggleMute() {
-    if (!_controller.value.isInitialized) return;
-    setState(() {
+    if (_isDisposed || _controllerDisposed || !_controller.value.isInitialized) {
+      return;
+    }
+    _setStateIfMounted(() {
       _isMuted = !_isMuted;
       _controller.setVolume(_isMuted ? 0.0 : 1.0);
       _showControls = true;
@@ -275,9 +310,16 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
   }
 
   void _onTap() {
-    setState(() {
+    _setStateIfMounted(() {
       _showControls = !_showControls;
     });
+  }
+
+  void _seekVideo(double value) {
+    if (_isDisposed || _controllerDisposed || !_controller.value.isInitialized) {
+      return;
+    }
+    _controller.seekTo(Duration(milliseconds: value.toInt()));
   }
 
   String _format(Duration d) {
@@ -322,24 +364,117 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
     );
   }
 
+  Widget _buildCaptionText(BuildContext context) {
+    final caption = _caption;
+    if (caption.isEmpty) return const SizedBox.shrink();
+
+    const style = TextStyle(
+      color: Colors.white70,
+      fontSize: 13,
+      height: 1.3,
+      shadows: [
+        Shadow(
+          color: Colors.black87,
+          blurRadius: 6,
+          offset: Offset(0, 1),
+        ),
+      ],
+    );
+
+    final actionStyle = style.copyWith(
+      color: Colors.white,
+      fontWeight: FontWeight.w700,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScaleFactor = MediaQuery.textScaleFactorOf(context);
+        final direction = Directionality.of(context);
+        final maxWidth = constraints.maxWidth;
+        const maxLines = 3;
+
+        final fullPainter = TextPainter(
+          text: TextSpan(text: caption, style: style),
+          textDirection: direction,
+          maxLines: maxLines,
+          textScaleFactor: textScaleFactor,
+        )..layout(maxWidth: maxWidth);
+
+        if (!fullPainter.didExceedMaxLines) {
+          return Text(caption, style: style);
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              caption,
+              style: style,
+              maxLines: maxLines,
+              overflow: TextOverflow.ellipsis,
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _showFullCaption(context),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text('More', style: actionStyle),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showFullCaption(BuildContext context) {
+    final caption = _caption;
+    if (caption.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black87,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              child: Text(
+                caption,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
+    _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _controllerDisposed = true;
     _timeRefreshTimer?.cancel();
-    try {
+    if (_videoListenerAttached) {
       _controller.removeListener(_onVideoChanged);
-    } catch (_) {}
-    _controller.pause();
-    _controller.dispose();
-    try {
-      _heartController.dispose();
-    } catch (_) {}
-    try {
-      _dismissController.dispose();
-    } catch (_) {}
-    _exitFullscreen();
+      _videoListenerAttached = false;
+    }
+    unawaited(_controller.dispose());
+    unawaited(_exitFullscreen());
     super.dispose();
   }
 
@@ -353,18 +488,49 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _onTap,
-          onDoubleTap: _handleDoubleTap,
+          onDoubleTap: _resetVideoZoom,
           child: Stack(
             children: [
               // Video
               Positioned.fill(
-                child: Center(
-                  child: _controller.value.isInitialized
-                      ? AspectRatio(
-                          aspectRatio: _controller.value.aspectRatio,
-                          child: VideoPlayer(_controller),
-                        )
-                      : const CircularProgressIndicator(),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (!_controller.value.isInitialized) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final viewport = constraints.biggest;
+                    final videoSize = _fittedVideoSize(
+                      viewport,
+                      _controller.value.aspectRatio,
+                    );
+
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onScaleStart: _handleVideoScaleStart,
+                      onScaleUpdate: (details) {
+                        _handleVideoScaleUpdate(details, viewport, videoSize);
+                      },
+                      child: Center(
+                        child: Transform.translate(
+                          offset: _clampVideoOffset(
+                            offset: _videoOffset,
+                            viewport: viewport,
+                            videoSize: videoSize,
+                            scale: _videoScale,
+                          ),
+                          child: Transform.scale(
+                            scale: _videoScale,
+                            child: SizedBox(
+                              width: videoSize.width,
+                              height: videoSize.height,
+                              child: VideoPlayer(_controller),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
 
@@ -503,6 +669,16 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                         textColor: Colors.white70,
                         onBeforeOpen: _prepareForNavigation,
                       ),
+                      const SizedBox(height: 16),
+
+                      IconButton(
+                        tooltip: 'Share',
+                        onPressed: () {
+                          ShareService.sharePostLink(context, widget.post);
+                        },
+                        icon: const Icon(Icons.ios_share_outlined, size: 24),
+                        color: Colors.white,
+                      ),
                     ],
                   ),
                 ),
@@ -605,23 +781,7 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                         ),
                         if (_caption.isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          Text(
-                            _caption,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                              height: 1.3,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black87,
-                                  blurRadius: 6,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          ),
+                          _buildCaptionText(context),
                         ],
                       ],
                     ),
@@ -650,12 +810,7 @@ class _PostVideoFullscreenPageState extends State<PostVideoFullscreenPage>
                                   : 1.0,
                               activeColor: Colors.white,
                               inactiveColor: Colors.white24,
-                              onChanged: (v) {
-                                final seekTo = Duration(
-                                  milliseconds: v.toInt(),
-                                );
-                                _controller.seekTo(seekTo);
-                              },
+                              onChanged: _seekVideo,
                             ),
                             Padding(
                               padding: const EdgeInsets.symmetric(

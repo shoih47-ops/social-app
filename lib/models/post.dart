@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class Post {
   final String id;
   final String imageUrl;
+  final List<String> imageUrls;
   final String videoUrl;
   final String type;
   final String text;
@@ -15,10 +16,12 @@ class Post {
   final String userPhoto;
   final String mood;
   final String category;
+  final List<String> taggedUserIds;
 
   Post({
     required this.id,
     required this.imageUrl,
+    this.imageUrls = const [],
     required this.videoUrl,
     required this.type,
     required this.text,
@@ -31,14 +34,20 @@ class Post {
     required this.userPhoto,
     this.mood = '',
     this.category = '',
+    this.taggedUserIds = const [],
   });
 
   factory Post.fromDocument(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final imageUrl = data['imageUrl'] ?? '';
+    final imageUrls = List<String>.from(data['imageUrls'] ?? const []);
 
     return Post(
       id: doc.id,
-      imageUrl: data['imageUrl'],
+      imageUrl: imageUrl,
+      imageUrls: imageUrls.isEmpty && imageUrl.isNotEmpty
+          ? [imageUrl]
+          : imageUrls,
       videoUrl: data['videoUrl'],
       type: data['type'],
       text: data['text'],
@@ -53,6 +62,13 @@ class Post {
       userPhoto: data['userPhoto'] ?? '',
       mood: data['mood'] ?? '',
       category: data['category'] ?? '',
+      taggedUserIds: List<String>.from(data['taggedUserIds'] ?? []),
     );
+  }
+
+  List<String> get effectiveImageUrls {
+    if (imageUrls.isNotEmpty) return imageUrls;
+    if (imageUrl.isNotEmpty) return [imageUrl];
+    return const [];
   }
 }

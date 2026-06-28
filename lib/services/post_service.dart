@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'notification_service.dart';
+
 class PostService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
   static final ValueNotifier<Set<String>> deletingVideoPostIds = ValueNotifier(
@@ -34,29 +36,52 @@ class PostService {
   static Future<void> addPost({
     required String text,
     String imageUrl = '',
+    List<String> imageUrls = const [],
     String videoUrl = '',
     required String type,
     String mood = '',
     String category = '',
+    List<String> taggedUserIds = const [],
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     final userDoc = await _db.collection('users').doc(user!.uid).get();
     final userData = userDoc.data();
+    final username = userData?['username'] ?? user.displayName ?? '';
+    final uniqueTaggedUserIds = taggedUserIds.toSet().toList();
 
-    await _db.collection('posts').add({
+    final postRef = await _db.collection('posts').add({
       'text': text,
       'comments': [],
       'createdAt': FieldValue.serverTimestamp(),
       'userId': user.uid,
-      'username': userData?['username'] ?? user.displayName ?? '',
+      'username': username,
       'userPhoto': userData?['photoUrl'] ?? '',
       'imageUrl': imageUrl,
+      'imageUrls': imageUrls.isEmpty && imageUrl.isNotEmpty
+          ? [imageUrl]
+          : imageUrls,
       'videoUrl': videoUrl,
       'type': type,
       'mood': mood,
       'category': category,
+      'taggedUserIds': uniqueTaggedUserIds,
       'likes': [],
     });
+
+    final notificationTasks = uniqueTaggedUserIds
+        .where((taggedUserId) => taggedUserId != user.uid)
+        .map(
+          (taggedUserId) => sendNotification(
+            toUserId: taggedUserId,
+            type: 'tagged',
+            fromUserId: user.uid,
+            fromUsername: username,
+            postId: postRef.id,
+            postType: type,
+          ),
+        );
+
+    await Future.wait(notificationTasks);
   }
 
   static Future<void> deletePost(String postId) async {

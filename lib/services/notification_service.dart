@@ -6,9 +6,19 @@ Future<void> sendNotification({
   required String fromUserId,
   required String fromUsername,
   String? postId,
+  String? postType,
 }) async {
   try {
     if (toUserId == fromUserId) return;
+
+    var resolvedPostType = postType ?? '';
+    if (resolvedPostType.isEmpty && postId != null && postId.isNotEmpty) {
+      final post = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(postId)
+          .get();
+      resolvedPostType = (post.data()?['type'] ?? '').toString();
+    }
 
     print("🔥 sending notification...");
 
@@ -21,6 +31,10 @@ Future<void> sendNotification({
           'fromUserId': fromUserId,
           'fromUsername': fromUsername,
           'postId': postId,
+          'postType': resolvedPostType,
+          'senderId': fromUserId,
+          'receiverId': toUserId,
+          'notificationType': type,
           'createdAt': FieldValue.serverTimestamp(),
           'isRead': false,
         });

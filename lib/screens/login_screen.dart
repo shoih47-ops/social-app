@@ -24,6 +24,24 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLoading = false;
   bool obscurePassword = true;
 
+  String _loginErrorMessage(FirebaseAuthException error) {
+    switch (error.code) {
+      case 'user-not-found':
+      case 'invalid-credential':
+        return 'Account not found or password is incorrect.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      default:
+        return 'Login failed. Please try again.';
+    }
+  }
+
   Future<void> checkUsernameAndGo() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -78,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
       debugPrint('Login FirebaseAuthException stackTrace: $stackTrace');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: ${e.message ?? e.code}')),
+        SnackBar(content: Text(_loginErrorMessage(e))),
       );
     } on FirebaseException catch (e, stackTrace) {
       debugPrint('Login FirebaseException code: ${e.code}');
@@ -86,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
       debugPrint('Login FirebaseException stackTrace: $stackTrace');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: ${e.message ?? e.code}')),
+        const SnackBar(content: Text('Login failed. Please try again.')),
       );
     } catch (e, stackTrace) {
       debugPrint('Login unexpected error: $e');
@@ -94,9 +112,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Login failed: $e')));
+      ).showSnackBar(
+        const SnackBar(content: Text('Login failed. Please try again.')),
+      );
     }
 
+    if (!mounted) return;
     setState(() {
       isLoading = false;
     });

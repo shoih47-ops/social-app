@@ -26,13 +26,20 @@ class _CreateUsernameScreenState extends State<CreateUsernameScreen> {
     String uid = FirebaseAuth.instance.currentUser!.uid;
     String username = usernameController.text.trim();
 
+    if (username.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Please enter a username")));
+      return;
+    }
+
     // Check username duplicate
     final check = await FirebaseFirestore.instance
         .collection('users')
-        .where('username', isEqualTo: usernameController.text)
+        .where('username', isEqualTo: username)
         .get();
 
-    if (check.docs.isNotEmpty) {
+    if (check.docs.any((doc) => doc.id != uid)) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Username already taken")));

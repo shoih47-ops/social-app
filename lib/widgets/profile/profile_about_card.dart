@@ -12,6 +12,7 @@ class ProfileAboutCard extends StatelessWidget {
   final String? relationship;
   final String? birthday;
   final String? lifeQuote;
+  final bool compactPriorityOnly;
 
   const ProfileAboutCard({
     super.key,
@@ -24,6 +25,7 @@ class ProfileAboutCard extends StatelessWidget {
     this.relationship,
     this.birthday,
     this.lifeQuote,
+    this.compactPriorityOnly = false,
   });
 
   @override
@@ -54,12 +56,61 @@ class ProfileAboutCard extends StatelessWidget {
           return row.value != null && row.value!.trim().isNotEmpty;
         }).toList();
 
-    final summaryRows = [
-      ...priorityRows,
-      ...allRows.where((row) {
-        return !priorityRows.any((priority) => priority.label == row.label);
-      }),
-    ].take(3).toList();
+    final summaryRows = compactPriorityOnly
+        ? priorityRows
+        : [
+            ...priorityRows,
+            ...allRows.where((row) {
+              return !priorityRows.any(
+                (priority) => priority.label == row.label,
+              );
+            }),
+          ].take(3).toList();
+
+    if (summaryRows.isEmpty && !compactPriorityOnly) {
+      return const SizedBox.shrink();
+    }
+
+    if (compactPriorityOnly) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+        padding: const EdgeInsets.fromLTRB(8, 7, 8, 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F8F8),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFEDEDED)),
+        ),
+        child: Column(
+          children: [
+            if (summaryRows.isNotEmpty)
+              Row(
+                children: [
+                  for (var index = 0; index < summaryRows.length; index++) ...[
+                    Expanded(child: _AboutTile(data: summaryRows[index])),
+                    if (index != summaryRows.length - 1)
+                      const SizedBox(width: 6),
+                  ],
+                ],
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: _AboutViewAllButton(
+                work: work,
+                family: family,
+                goal: goal,
+                interests: interests,
+                location: location,
+                nationality: nationality,
+                relationship: relationship,
+                birthday: birthday,
+                lifeQuote: lifeQuote,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       width: double.infinity,
@@ -90,39 +141,78 @@ class ProfileAboutCard extends StatelessWidget {
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProfileAboutDetailsScreen(
-                      work: work,
-                      family: family,
-                      goal: goal,
-                      interests: interests,
-                      location: location,
-                      nationality: nationality,
-                      relationship: relationship,
-                      birthday: birthday,
-                      lifeQuote: lifeQuote,
-                    ),
-                  ),
-                );
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF6D4CFF),
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                minimumSize: const Size(0, 30),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
-                'View All',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
+            child: _AboutViewAllButton(
+              work: work,
+              family: family,
+              goal: goal,
+              interests: interests,
+              location: location,
+              nationality: nationality,
+              relationship: relationship,
+              birthday: birthday,
+              lifeQuote: lifeQuote,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AboutViewAllButton extends StatelessWidget {
+  final String? work;
+  final String? family;
+  final String? goal;
+  final String? interests;
+  final String? location;
+  final String? nationality;
+  final String? relationship;
+  final String? birthday;
+  final String? lifeQuote;
+
+  const _AboutViewAllButton({
+    this.work,
+    this.family,
+    this.goal,
+    this.interests,
+    this.location,
+    this.nationality,
+    this.relationship,
+    this.birthday,
+    this.lifeQuote,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProfileAboutDetailsScreen(
+              work: work,
+              family: family,
+              goal: goal,
+              interests: interests,
+              location: location,
+              nationality: nationality,
+              relationship: relationship,
+              birthday: birthday,
+              lifeQuote: lifeQuote,
+            ),
+          ),
+        );
+      },
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xFF6D4CFF),
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        minimumSize: const Size(0, 28),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: const Text(
+        'View All',
+        style: TextStyle(fontWeight: FontWeight.w600),
       ),
     );
   }

@@ -65,22 +65,22 @@ class _MediaActionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 115,
+        height: 96,
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.35),
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(color: Colors.white.withOpacity(0.4)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 34, color: Colors.deepPurple),
-            SizedBox(height: 10),
+            Icon(icon, size: 30, color: Colors.deepPurple),
+            SizedBox(height: 7),
             Text(
               title,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-            SizedBox(height: 4),
+            SizedBox(height: 2),
             Text(subtitle, style: TextStyle(fontSize: 13, color: Colors.grey)),
           ],
         ),

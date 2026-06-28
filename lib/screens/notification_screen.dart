@@ -25,6 +25,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
         return "started following you";
       case "reply":
         return "replied to your comment";
+      case "tagged":
+        return "tagged you in a moment.";
       default:
         return "";
     }

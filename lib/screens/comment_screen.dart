@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/notification_service.dart';
-import '../utils/time_ago.dart';
-import '../widgets/comment_tile.dart';
-import '../widgets/reply_tile.dart';
+import '../widgets/comments_list_view.dart';
 
 class CommentScreen extends StatefulWidget {
   final String postId;
@@ -22,7 +20,6 @@ class CommentScreen extends StatefulWidget {
 
 class _CommentScreenState extends State<CommentScreen> {
   final commentController = TextEditingController();
-  final Map<String, bool> _showReplies = {};
 
   @override
   void dispose() {
@@ -41,6 +38,8 @@ class _CommentScreenState extends State<CommentScreen> {
         .get();
 
     final userData = userDoc.data() as Map<String, dynamic>;
+    final text = commentController.text;
+    commentController.clear();
 
     await FirebaseFirestore.instance
         .collection('posts')
@@ -50,7 +49,7 @@ class _CommentScreenState extends State<CommentScreen> {
           "userId": user.uid,
           "username": userData['username'],
           "photoUrl": userData['photoUrl'],
-          "text": commentController.text,
+          "text": text,
           "createdAt": FieldValue.serverTimestamp(),
           "likes": [],
         });
@@ -69,108 +68,6 @@ class _CommentScreenState extends State<CommentScreen> {
       fromUsername: username,
       postId: widget.postId,
     );
-
-    commentController.clear();
-    setState(() {});
-  }
-
-  void toggleLike(String commentId, List likes) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
-    final ref = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.postId)
-        .collection('comments')
-        .doc(commentId);
-
-    if (likes.contains(uid)) {
-      likes.remove(uid);
-    } else {
-      likes.add(uid);
-    }
-
-    await ref.update({'likes': likes});
-  }
-
-  void showReplyDialog(
-    String commentId,
-    String commentOwnerId,
-    String username,
-  ) {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Reply to $username"),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(hintText: "Write your reply..."),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                sendReply(commentId, commentOwnerId, controller.text.trim());
-                Navigator.pop(context);
-              },
-              child: const Text("Send"),
-            ),
-          ],
-        );
-      },
-    ).whenComplete(controller.dispose);
-  }
-
-  void sendReply(
-    String commentId,
-    String commentOwnerId,
-    String text,
-  ) async {
-    if (text.isEmpty) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
-        .get();
-
-    final userData = userDoc.data() as Map<String, dynamic>;
-
-    await FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.postId)
-        .collection('comments')
-        .doc(commentId)
-        .collection('replies')
-        .add({
-          'text': text,
-          'userId': user.uid,
-          'username': userData['username'],
-          'photoUrl': userData['photoUrl'],
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-    if (commentOwnerId != user.uid) {
-      await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(commentOwnerId)
-          .collection('items')
-          .add({
-            'toUserId': commentOwnerId,
-            'fromUserId': user.uid,
-            'type': 'reply',
-            'isRead': false,
-            'postId': widget.postId,
-            'text': text,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-    }
   }
 
   @override
@@ -181,199 +78,9 @@ class _CommentScreenState extends State<CommentScreen> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('posts')
-                  .doc(widget.postId)
-                  .collection('comments')
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("No comments yet"));
-                }
-
-                final comments = snapshot.data!.docs;
-
-                return ListView.builder(
-                  itemCount: comments.length,
-                  itemBuilder: (context, index) {
-                    final comment = comments[index];
-                    final data = comment.data() as Map<String, dynamic>;
-                    final userId = data['userId'];
-
-                    final likes = (data['likes'] is List) ? data['likes'] : [];
-                    final uid = FirebaseAuth.instance.currentUser!.uid;
-                    final isLiked = likes.contains(uid);
-
-                    return FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(userId)
-                          .get(),
-                      builder: (context, userSnap) {
-                        if (!userSnap.hasData) return const SizedBox();
-                        final user =
-                            userSnap.data!.data() as Map<String, dynamic>;
-
-                        final show = _showReplies[comment.id] ?? false;
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.03),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(12),
-                                child: CommentTile(
-                                  photoUrl: user['photoUrl'],
-                                  username: user['username'] ?? 'Unknown',
-                                  text: data['text'] ?? '',
-                                  userId: data['userId'],
-                                  time: TimeAgoHelper.format(
-                                    TimeAgoHelper.fromFirestore(
-                                      data['createdAt'],
-                                    ),
-                                  ),
-                                  onReply: () {
-                                    showReplyDialog(
-                                      comment.id,
-                                      data['userId'],
-                                      user['username'] ?? '',
-                                    );
-                                  },
-                                  onLike: () {
-                                    toggleLike(comment.id, likes);
-                                  },
-                                  onDelete: () async {
-                                    await FirebaseFirestore.instance
-                                        .collection('posts')
-                                        .doc(widget.postId)
-                                        .collection('comments')
-                                        .doc(comment.id)
-                                        .delete();
-                                  },
-                                  isLiked: isLiked,
-                                  likeCount: likes.length,
-                                ),
-                              ),
-
-                              const SizedBox(height: 4),
-                              StreamBuilder<QuerySnapshot>(
-                                stream: FirebaseFirestore.instance
-                                    .collection('posts')
-                                    .doc(widget.postId)
-                                    .collection('comments')
-                                    .doc(comment.id)
-                                    .collection('replies')
-                                    .orderBy('createdAt')
-                                    .snapshots(),
-                                builder: (context, snap) {
-                                  if (!snap.hasData) return const SizedBox();
-                                  final replies = snap.data!.docs;
-
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (replies.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 44,
-                                            top: 2,
-                                            bottom: 1,
-                                          ),
-                                          child: TextButton(
-                                            style: TextButton.styleFrom(
-                                              padding: EdgeInsets.zero,
-                                              minimumSize: const Size(0, 0),
-                                              tapTargetSize:
-                                                  MaterialTapTargetSize
-                                                      .shrinkWrap,
-                                              alignment: Alignment.centerLeft,
-                                            ),
-                                            onPressed: () {
-                                              setState(() {
-                                                _showReplies[comment.id] =
-                                                    !(_showReplies[comment
-                                                            .id] ??
-                                                        false);
-                                              });
-                                            },
-                                            child: Text(
-                                              replies.length == 1
-                                                  ? '1 Reply'
-                                                  : '${replies.length} Replies',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade600,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-
-                                      if (show)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 44,
-                                            top: 1,
-                                          ),
-                                          child: Column(
-                                            children: replies.map((reply) {
-                                              final replyData =
-                                                  reply.data()
-                                                      as Map<String, dynamic>;
-                                              return ReplyTile(
-                                                replyData: replyData,
-                                                repliedToUsername:
-                                                    user['username'] ??
-                                                    'Unknown',
-                                                onDelete: () async {
-                                                  await FirebaseFirestore
-                                                      .instance
-                                                      .collection('posts')
-                                                      .doc(widget.postId)
-                                                      .collection('comments')
-                                                      .doc(comment.id)
-                                                      .collection('replies')
-                                                      .doc(reply.id)
-                                                      .delete();
-                                                },
-                                              );
-                                            }).toList(),
-                                          ),
-                                        ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+            child: CommentsListView(
+              postId: widget.postId,
+              postOwnerId: widget.postOwnerId,
             ),
           ),
 

@@ -35,16 +35,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   CameraCaptureType _mode = CameraCaptureType.photo;
   bool _isCapturing = false;
   bool _isRecording = false;
-  bool _isRecordingPaused = false;
   bool _isClosing = false;
   bool _isAppActive = true;
   bool _isReleasingCamera = false;
   FlashMode _flashMode = FlashMode.off;
-  double _minExposure = 0;
-  double _maxExposure = 0;
-  double _exposure = 0;
-  Offset? _focusIndicator;
-  Timer? _focusIndicatorTimer;
   Timer? _recordingTimer;
   final Stopwatch _recordingStopwatch = Stopwatch();
   Duration _recordingDuration = Duration.zero;
@@ -106,7 +100,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       }
 
       await _enableAutoFocus(controller);
-      await _configureExposure(controller);
       try {
         await controller.setFlashMode(FlashMode.off);
         _flashMode = FlashMode.off;
@@ -139,23 +132,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       await controller.dispose().timeout(const Duration(seconds: 5));
     } catch (_) {
       // Native camera cleanup must never leave this route waiting forever.
-    }
-  }
-
-  Future<void> _configureExposure(CameraController controller) async {
-    try {
-      final values = await Future.wait([
-        controller.getMinExposureOffset(),
-        controller.getMaxExposureOffset(),
-      ]);
-      if (!mounted || !identical(_controller, controller)) return;
-      _minExposure = values[0];
-      _maxExposure = values[1];
-      _exposure = 0.clamp(_minExposure, _maxExposure).toDouble();
-    } catch (_) {
-      _minExposure = 0;
-      _maxExposure = 0;
-      _exposure = 0;
     }
   }
 
@@ -198,12 +174,36 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     });
   }
 
-  void _switchCamera() {
-    if (_isRecording) {
-      _showSwitchCameraBlockedMessage();
-      return;
+  bool get _hasAlternateCamera {
+    final cameras = _availableCameras;
+    final currentCamera = _camera;
+    if (cameras == null || currentCamera == null) return false;
+
+    final targetDirection =
+        currentCamera.lensDirection == CameraLensDirection.front
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+
+    return cameras.any((camera) => camera.lensDirection == targetDirection);
+  }
+
+  bool get _canSwitchCamera =>
+      !_isInitializing && !_isCapturing && !_isRecording && _hasAlternateCamera;
+
+  CameraDescription? get _backCamera {
+    final cameras = _availableCameras;
+    if (cameras == null) return null;
+
+    for (final camera in cameras) {
+      if (camera.lensDirection == CameraLensDirection.back) {
+        return camera;
+      }
     }
-    if (_isInitializing || _isCapturing) return;
+    return null;
+  }
+
+  void _switchCamera() {
+    if (!_canSwitchCamera) return;
 
     final cameras = _availableCameras;
     final currentCamera = _camera;
@@ -231,19 +231,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     setState(() {
       _initializationFuture = _initializeCamera(camera: targetCamera);
     });
-  }
-
-  void _showSwitchCameraBlockedMessage() {
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Stop recording before switching camera.'),
-        duration: Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
@@ -291,6 +278,19 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
 
   void _setMode(CameraCaptureType mode) {
     if (_isCapturing || _isRecording || _mode == mode) return;
+
+    if (mode == CameraCaptureType.video &&
+        _camera?.lensDirection == CameraLensDirection.front) {
+      final backCamera = _backCamera;
+      if (backCamera != null) {
+        setState(() {
+          _mode = mode;
+          _initializationFuture = _initializeCamera(camera: backCamera);
+        });
+        return;
+      }
+    }
+
     setState(() => _mode = mode);
   }
 
@@ -327,7 +327,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
         if (!mounted) return;
         setState(() {
           _isRecording = true;
-          _isRecordingPaused = false;
           _recordingDuration = Duration.zero;
         });
         _startRecordingTimer();
@@ -345,7 +344,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       ..reset()
       ..start();
     _recordingTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (!mounted || !_isRecording || _isRecordingPaused) return;
+      if (!mounted || !_isRecording) return;
       final elapsed = _recordingStopwatch.elapsed;
       final reachedLimit = elapsed >= _maxCameraRecordingDuration;
       setState(() {
@@ -373,46 +372,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     }
   }
 
-  Future<void> _togglePauseRecording() async {
-    final controller = _controller;
-    if (controller == null ||
-        !_isRecording ||
-        _isCapturing ||
-        !controller.value.isRecordingVideo) {
-      return;
-    }
-
-    setState(() => _isCapturing = true);
-    var reachedLimitWhilePausing = false;
-    try {
-      if (_isRecordingPaused) {
-        await controller.resumeVideoRecording();
-        _recordingStopwatch.start();
-        if (mounted) setState(() => _isRecordingPaused = false);
-      } else {
-        await controller.pauseVideoRecording();
-        _recordingStopwatch.stop();
-        reachedLimitWhilePausing =
-            _recordingStopwatch.elapsed >= _maxCameraRecordingDuration;
-        if (mounted) {
-          setState(() {
-            _isRecordingPaused = true;
-            _recordingDuration = reachedLimitWhilePausing
-                ? _maxCameraRecordingDuration
-                : _recordingStopwatch.elapsed;
-          });
-        }
-      }
-    } on CameraException catch (error) {
-      _showCameraError(error);
-    } finally {
-      if (mounted) setState(() => _isCapturing = false);
-    }
-    if (reachedLimitWhilePausing && mounted) {
-      await _stopRecordingAtLimit();
-    }
-  }
-
   Future<XFile?> _stopVideoRecording({required bool showPreview}) async {
     final controller = _controller;
     if (controller == null || !_isRecording) return null;
@@ -429,12 +388,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       if (mounted) {
         setState(() {
           _isRecording = false;
-          _isRecordingPaused = false;
           _recordingDuration = Duration.zero;
         });
       } else {
         _isRecording = false;
-        _isRecordingPaused = false;
       }
     }
 
@@ -527,17 +484,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     }
   }
 
-  Future<void> _setExposure(double value) async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
-    setState(() => _exposure = value);
-    try {
-      await controller.setExposureOffset(value);
-    } on CameraException {
-      // Exposure may be reported but unavailable for a particular lens.
-    }
-  }
-
   void _showCameraError(CameraException error) {
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -560,7 +506,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     WidgetsBinding.instance.removeObserver(this);
     _initializationGeneration++;
     _isInitializing = false;
-    _focusIndicatorTimer?.cancel();
     _stopRecordingTimer();
     _videoPreviewController?.dispose();
     final controller = _controller;
@@ -621,23 +566,15 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                   Positioned(
                     top: MediaQuery.paddingOf(context).top + 8,
                     right: 8,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _isRecording
-                          ? _showSwitchCameraBlockedMessage
-                          : null,
-                      child: IconButton(
-                        tooltip: _isRecording
-                            ? 'Stop recording before switching camera'
-                            : 'Switch camera',
-                        onPressed: _isRecording || _isCapturing
-                            ? null
-                            : _switchCamera,
-                        icon: Icon(
-                          Icons.cameraswitch_outlined,
-                          color: _isRecording ? Colors.white54 : Colors.white,
-                          size: 30,
-                        ),
+                    child: IconButton(
+                      tooltip: _isRecording
+                          ? 'Stop recording before switching camera'
+                          : 'Switch camera',
+                      onPressed: _canSwitchCamera ? _switchCamera : null,
+                      icon: Icon(
+                        Icons.cameraswitch_outlined,
+                        color: _canSwitchCamera ? Colors.white : Colors.white54,
+                        size: 30,
                       ),
                     ),
                   ),
@@ -659,46 +596,13 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                       ),
                     ),
                   ),
-                if (isReady && _focusIndicator != null)
-                  Positioned(
-                    left: _focusIndicator!.dx - 28,
-                    top: _focusIndicator!.dy - 28,
-                    child: IgnorePointer(
-                      child: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.amber, width: 2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (isReady && _maxExposure > _minExposure)
-                  Positioned(
-                    top: MediaQuery.paddingOf(context).top + 64,
-                    right: 8,
-                    bottom: 170,
-                    child: RotatedBox(
-                      quarterTurns: 3,
-                      child: Slider(
-                        value: _exposure.clamp(_minExposure, _maxExposure),
-                        min: _minExposure,
-                        max: _maxExposure,
-                        onChanged: _isCapturing ? null : _setExposure,
-                      ),
-                    ),
-                  ),
                 if (isReady && _isRecording)
                   Positioned(
                     top: MediaQuery.paddingOf(context).top + 18,
                     left: 0,
                     right: 0,
                     child: Center(
-                      child: _RecordingTimer(
-                        _recordingDuration,
-                        isPaused: _isRecordingPaused,
-                      ),
+                      child: _RecordingTimer(_recordingDuration),
                     ),
                   ),
                 if (isReady) _buildCaptureControls(),
@@ -760,12 +664,6 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     Size previewSize,
   ) async {
     if (!controller.value.isInitialized || _isCapturing) return;
-
-    _focusIndicatorTimer?.cancel();
-    if (mounted) setState(() => _focusIndicator = tapPosition);
-    _focusIndicatorTimer = Timer(const Duration(seconds: 1), () {
-      if (mounted) setState(() => _focusIndicator = null);
-    });
 
     final scale = math.max(
       viewportSize.width / previewSize.width,
@@ -922,33 +820,14 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
               ),
             ),
           const SizedBox(height: 18),
-          if (_isRecording)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _RecordingControlButton(
-                  icon: _isRecordingPaused ? Icons.play_arrow : Icons.pause,
-                  label: _isRecordingPaused ? 'Resume' : 'Pause',
-                  onPressed: _isCapturing ? null : _togglePauseRecording,
-                ),
-                const SizedBox(width: 28),
-                _RecordingControlButton(
-                  icon: Icons.stop,
-                  label: 'Stop',
-                  isDestructive: true,
-                  onPressed: _isCapturing ? null : _toggleVideoRecording,
-                ),
-              ],
-            )
-          else
-            GestureDetector(
-              onTap: _isCapturing
-                  ? null
-                  : _mode == CameraCaptureType.photo
-                  ? _takePhoto
-                  : _toggleVideoRecording,
-              child: _CaptureButton(mode: _mode, isRecording: false),
-            ),
+          GestureDetector(
+            onTap: _isCapturing
+                ? null
+                : _mode == CameraCaptureType.photo
+                ? _takePhoto
+                : _toggleVideoRecording,
+            child: _CaptureButton(mode: _mode, isRecording: _isRecording),
+          ),
         ],
       ),
     );
@@ -1057,54 +936,10 @@ class _CaptureButton extends StatelessWidget {
   }
 }
 
-class _RecordingControlButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isDestructive;
-  final VoidCallback? onPressed;
-
-  const _RecordingControlButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.isDestructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isDestructive ? Colors.red : Colors.white;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton.filled(
-          tooltip: label,
-          onPressed: onPressed,
-          style: IconButton.styleFrom(
-            backgroundColor: color,
-            disabledBackgroundColor: color.withValues(alpha: 0.45),
-            foregroundColor: isDestructive ? Colors.white : Colors.black,
-            minimumSize: const Size(64, 64),
-          ),
-          icon: Icon(icon, size: 32),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: onPressed == null ? Colors.white54 : Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _RecordingTimer extends StatelessWidget {
   final Duration duration;
-  final bool isPaused;
 
-  const _RecordingTimer(this.duration, {required this.isPaused});
+  const _RecordingTimer(this.duration);
 
   @override
   Widget build(BuildContext context) {
@@ -1119,11 +954,7 @@ class _RecordingTimer extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isPaused ? Icons.pause : Icons.circle,
-            color: isPaused ? Colors.amber : Colors.red,
-            size: isPaused ? 14 : 10,
-          ),
+          Icon(Icons.circle, color: Colors.red, size: 10),
           const SizedBox(width: 7),
           Text(
             '$minutes:$seconds',

@@ -6,6 +6,7 @@ import '../utils/route_observer.dart';
 import 'life_journey_details_screen.dart';
 
 import '../services/follow_service.dart';
+import '../services/share_service.dart';
 import '../widgets/profile/profile_about_card.dart';
 import '../widgets/profile/profile_life_journey_card.dart';
 import '../widgets/profile/profile_screen_layout.dart';
@@ -269,6 +270,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
         surfaceTintColor: Colors.transparent,
         iconTheme: IconThemeData(color: appBarForeground),
         titleTextStyle: TextStyle(color: appBarForeground, fontSize: 20),
+        actions: [
+          IconButton(
+            tooltip: 'Share',
+            icon: const Icon(Icons.ios_share_outlined),
+            onPressed: username.trim().isEmpty
+                ? null
+                : () {
+                    ShareService.shareUserProfile(
+                      context,
+                      username,
+                      displayName: username,
+                      isCurrentUser: false,
+                    );
+                  },
+          ),
+        ],
       ),
       body: ProfileScreenLayout(
         coverUrl: coverUrl,
@@ -341,13 +358,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> with RouteAware {
                 },
               ),
               UserProfileStats(userId: widget.userId),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: _toggleFollow,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                ),
                 child: Text(isFollowing ? "Following" : "Follow"),
               ),
-              const SizedBox(height: 30),
-              UserProfilePostsGrid(userId: widget.userId),
+              const SizedBox(height: 16),
+              UserProfileMomentsTabs(userId: widget.userId),
               const SizedBox(height: 100),
             ],
           ),

@@ -13,15 +13,36 @@ import 'package:video_trimmer/video_trimmer.dart';
 import '../services/cloudinary_service.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as video_thumbnail;
 import '../services/post_service.dart';
+import '../services/user_search_service.dart';
 import 'camera_capture_screen.dart';
 
 part '../widgets/create_post/mood_selector.dart';
 part '../widgets/create_post/category_selector.dart';
+part '../widgets/create_post/people_selector.dart';
 part '../widgets/create_post/media_preview_card.dart';
 part '../widgets/create_post/media_action_buttons.dart';
 part '../widgets/create_post/video_trim_screen.dart';
 
 const Duration _maxVideoDuration = Duration(seconds: 30);
+
+class _PendingCropImage {
+  final Uint8List bytes;
+  final String name;
+
+  const _PendingCropImage({required this.bytes, required this.name});
+}
+
+class _CroppedPostImage {
+  final File? file;
+  final Uint8List bytes;
+  final String name;
+
+  const _CroppedPostImage({
+    required this.file,
+    required this.bytes,
+    required this.name,
+  });
+}
 
 class CreatePostScreen extends StatefulWidget {
   final VoidCallback? onPostSuccess;
@@ -33,9 +54,13 @@ class CreatePostScreen extends StatefulWidget {
 }
 
 class _ImageCropScreen extends StatefulWidget {
-  final Uint8List imageBytes;
+  final List<_PendingCropImage> images;
+  final List<_CroppedPostImage> initialCroppedImages;
 
-  const _ImageCropScreen({required this.imageBytes});
+  const _ImageCropScreen({
+    required this.images,
+    this.initialCroppedImages = const [],
+  });
 
   @override
   State<_ImageCropScreen> createState() => _ImageCropScreenState();
@@ -43,14 +68,30 @@ class _ImageCropScreen extends StatefulWidget {
 
 class _ImageCropScreenState extends State<_ImageCropScreen> {
   final CropController _cropController = CropController();
+  late final List<_PendingCropImage> _images = List.of(widget.images);
+  late final List<_CroppedPostImage> _croppedImages = List.of(
+    widget.initialCroppedImages,
+  );
+  int _currentIndex = 0;
   bool _isCropping = false;
+  bool _isCropInteractive = false;
+
+  _PendingCropImage get _currentImage => _images[_currentIndex];
+
+  void _enableCropInteraction(CropStatus status) {
+    if (status != CropStatus.ready || _isCropInteractive || !mounted) return;
+
+    setState(() {
+      _isCropInteractive = true;
+    });
+  }
 
   void _finishCrop(CropResult result) {
     if (!mounted) return;
 
     switch (result) {
       case CropSuccess(:final croppedImage):
-        Navigator.of(context).pop(croppedImage);
+        unawaited(_handleCropSuccess(croppedImage));
       case CropFailure():
         setState(() {
           _isCropping = false;
@@ -70,8 +111,75 @@ class _ImageCropScreenState extends State<_ImageCropScreen> {
     _cropController.crop();
   }
 
+  Future<void> _handleCropSuccess(Uint8List croppedImage) async {
+    File? croppedFile;
+    if (!kIsWeb) {
+      croppedFile = await _writeImageBytesToTempFile(croppedImage);
+    }
+
+    if (!mounted) return;
+
+    _croppedImages.add(
+      _CroppedPostImage(
+        file: croppedFile,
+        bytes: croppedImage,
+        name: _currentImage.name.isEmpty ? 'post_image.jpg' : _currentImage.name,
+      ),
+    );
+
+    if (_currentIndex < _images.length - 1) {
+      setState(() {
+        _currentIndex += 1;
+        _isCropping = false;
+        _isCropInteractive = false;
+      });
+      return;
+    }
+
+    Navigator.of(context).pop<List<_CroppedPostImage>>(_croppedImages);
+  }
+
+  Future<void> _addMoreImages() async {
+    if (_isCropping) return;
+
+    final pickedFiles = await ImagePicker().pickMultiImage(
+      imageQuality: 70,
+      maxWidth: 1080,
+    );
+
+    if (pickedFiles.isEmpty || !mounted) return;
+
+    final addedImages = <_PendingCropImage>[];
+    for (final pickedFile in pickedFiles) {
+      addedImages.add(
+        _PendingCropImage(
+          bytes: await pickedFile.readAsBytes(),
+          name: pickedFile.name.isEmpty ? 'post_image.jpg' : pickedFile.name,
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _images.addAll(addedImages);
+    });
+  }
+
+  Future<File> _writeImageBytesToTempFile(Uint8List imageBytes) async {
+    final croppedFile = File(
+      '${Directory.systemTemp.path}/'
+      'experience_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    await croppedFile.writeAsBytes(imageBytes, flush: true);
+
+    return croppedFile;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final positionLabel = '${_currentIndex + 1}/${_images.length}';
+
     return Scaffold(
       backgroundColor: Colors.deepPurple.shade700,
       body: SafeArea(
@@ -88,16 +196,29 @@ class _ImageCropScreenState extends State<_ImageCropScreen> {
                     tooltip: 'Cancel',
                     onPressed: _isCropping
                         ? null
-                        : () => Navigator.of(context).pop<Uint8List>(),
+                        : () => Navigator.of(
+                            context,
+                          ).pop<List<_CroppedPostImage>>(),
                     icon: const Icon(Icons.close, color: Colors.white),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Crop image',
+                      positionLabel,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _isCropping ? null : _addMoreImages,
+                    icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                    label: const Text(
+                      'Add',
+                      style: TextStyle(
+                        color: Colors.white,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -123,24 +244,16 @@ class _ImageCropScreenState extends State<_ImageCropScreen> {
               child: Container(
                 color: Colors.black,
                 child: Crop(
-                  image: widget.imageBytes,
+                  key: ValueKey(_currentIndex),
+                  image: _currentImage.bytes,
                   controller: _cropController,
                   onCropped: _finishCrop,
-                  interactive: true,
+                  onStatusChanged: _enableCropInteraction,
+                  interactive: _isCropInteractive,
                   fixCropRect: false,
-                  initialRectBuilder: InitialRectBuilder.withBuilder((
-                    _,
-                    imageRect,
-                  ) {
-                    final cropWidth = imageRect.width * 0.76;
-                    final cropHeight = imageRect.height * 0.76;
-                    final left =
-                        imageRect.left + (imageRect.width - cropWidth) / 2;
-                    final top =
-                        imageRect.top + (imageRect.height - cropHeight) / 2;
-
-                    return Rect.fromLTWH(left, top, cropWidth, cropHeight);
-                  }),
+                  initialRectBuilder: InitialRectBuilder.withBuilder(
+                    (_, imageRect) => imageRect,
+                  ),
                   baseColor: Colors.black,
                   maskColor: Colors.black.withOpacity(0.55),
                   radius: 12,
@@ -187,11 +300,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     '🏆 Achievement',
     '👨‍👩‍👧 Family',
     '✈️ Travel',
+    '🕰️ Memory',
+    '🎮 Game',
   ];
 
-  File? _selectedImage;
-  Uint8List? _selectedImageBytes;
-  String? _selectedImageName;
+  List<_CroppedPostImage> _selectedImages = const [];
   File? _selectedVideo;
   XFile? _selectedVideoXFile;
   String? _selectedVideoPreviewUrl;
@@ -205,36 +318,71 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   late final String _placeholderPrompt;
   String? _selectedMood;
   String? _selectedCategory;
+  List<UserSearchResult> _selectedPeople = const [];
 
   FocusNode focusNode = FocusNode();
 
+  bool get _hasPostContent =>
+      textController.text.trim().isNotEmpty ||
+      _selectedImages.isNotEmpty ||
+      _selectedVideo != null ||
+      _selectedVideoXFile != null;
+
+  bool get _canSharePost => _hasPostContent && !_isUploading;
+
   Future<void> _pickImageFromGallery() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
+    final pickedFiles = await ImagePicker().pickMultiImage(
       imageQuality: 70,
       maxWidth: 1080,
     );
 
-    if (pickedFile != null) await _processPickedImage(pickedFile);
+    if (pickedFiles.isNotEmpty) {
+      await _processPickedImages(pickedFiles);
+    }
+  }
+
+  Future<void> _pickAdditionalImages() async {
+    final pickedFiles = await ImagePicker().pickMultiImage(
+      imageQuality: 70,
+      maxWidth: 1080,
+    );
+
+    if (pickedFiles.isNotEmpty) {
+      await _processPickedImages(pickedFiles, append: true);
+    }
   }
 
   Future<void> _processPickedImage(XFile pickedFile) async {
-    final croppedBytes = await _openCropScreen(await pickedFile.readAsBytes());
+    await _processPickedImages([pickedFile]);
+  }
 
-    if (croppedBytes == null || !mounted) return;
+  Future<void> _processPickedImages(
+    List<XFile> pickedFiles, {
+    bool append = false,
+  }) async {
+    if (pickedFiles.isEmpty) return;
 
-    File? croppedFile;
-    if (!kIsWeb) {
-      croppedFile = await _writeImageBytesToTempFile(croppedBytes);
+    final pendingImages = <_PendingCropImage>[];
+    for (final pickedFile in pickedFiles) {
+      pendingImages.add(
+        _PendingCropImage(
+          bytes: await pickedFile.readAsBytes(),
+          name: pickedFile.name.isEmpty ? 'post_image.jpg' : pickedFile.name,
+        ),
+      );
     }
 
+    if (!mounted) return;
+
+    final croppedImages = await _openCropScreen(
+      pendingImages,
+      initialCroppedImages: append ? _selectedImages : const [],
+    );
+
+    if (croppedImages == null || !mounted) return;
+
     setState(() {
-      _selectedImage = croppedFile;
-      _selectedImageBytes = croppedBytes;
-      _selectedImageName = pickedFile.name.isEmpty
-          ? 'post_image.jpg'
-          : pickedFile.name;
+      _selectedImages = croppedImages;
       _selectedVideo = null;
       _selectedVideoXFile = null;
       _selectedVideoPreviewUrl = null;
@@ -243,36 +391,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     });
   }
 
-  Future<Uint8List?> _openCropScreen(Uint8List imageBytes) async {
+  Future<List<_CroppedPostImage>?> _openCropScreen(
+    List<_PendingCropImage> images, {
+    List<_CroppedPostImage> initialCroppedImages = const [],
+  }) async {
     if (!mounted) return null;
 
-    final croppedBytes = await Navigator.of(context).push<Uint8List>(
+    final croppedImages = await Navigator.of(context)
+        .push<List<_CroppedPostImage>>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => _ImageCropScreen(imageBytes: imageBytes),
+        builder: (_) => _ImageCropScreen(
+          images: images,
+          initialCroppedImages: initialCroppedImages,
+        ),
       ),
     );
 
-    if (croppedBytes == null) return null;
-
-    return croppedBytes;
-  }
-
-  Future<File> _writeImageBytesToTempFile(Uint8List imageBytes) async {
-    final croppedFile = File(
-      '${Directory.systemTemp.path}/'
-      'experience_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
-    );
-    await croppedFile.writeAsBytes(imageBytes, flush: true);
-
-    return croppedFile;
-  }
-
-  Future<void> _pickVideoFromGallery() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickVideo(source: ImageSource.gallery);
-
-    if (pickedFile != null) await _processPickedVideo(pickedFile);
+    return croppedImages;
   }
 
   Future<void> _processPickedVideo(XFile pickedFile) async {
@@ -329,9 +465,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _selectedVideo = file;
         _selectedVideoXFile = pickedFile;
         _selectedVideoPreviewUrl = null;
-        _selectedImage = null;
-        _selectedImageBytes = null;
-        _selectedImageName = null;
+        _selectedImages = const [];
         _selectedVideoThumbnail = thumbnail;
         _selectedVideoDuration = duration;
       });
@@ -365,9 +499,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         _selectedVideo = null;
         _selectedVideoXFile = pickedFile;
         _selectedVideoPreviewUrl = pickedFile.path;
-        _selectedImage = null;
-        _selectedImageBytes = null;
-        _selectedImageName = null;
+        _selectedImages = const [];
         _selectedVideoThumbnail = null;
         _selectedVideoDuration = duration;
       });
@@ -412,6 +544,181 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         await _processPickedImage(result.file);
       case CameraCaptureType.video:
         await _processPickedVideo(result.file);
+    }
+  }
+
+  Future<void> _pickVideoFromGallery() async {
+    final pickedFile = await ImagePicker().pickVideo(
+      source: ImageSource.gallery,
+      maxDuration: _maxVideoDuration,
+    );
+
+    if (pickedFile != null && mounted) {
+      await _processPickedVideo(pickedFile);
+    }
+  }
+
+  Future<void> _sharePost() async {
+    if (_isUploading) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (!_hasPostContent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Write something or add a photo/video")),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUploading = true;
+      _uploadProgress = 0;
+      _uploadStatus = _selectedVideo != null || _selectedVideoXFile != null
+          ? 'Uploading video...'
+          : _selectedImages.isNotEmpty
+          ? 'Uploading image...'
+          : 'Sharing...';
+    });
+
+    try {
+      String imageUrl = '';
+      final imageUrls = <String>[];
+      String videoUrl = '';
+      String type = 'image';
+
+      if (_selectedVideo != null || _selectedVideoXFile != null) {
+        type = 'video';
+
+        final thumbData = kIsWeb || _selectedVideo == null
+            ? _selectedVideoThumbnail
+            : await video_thumbnail.VideoThumbnail.thumbnailData(
+                video: _selectedVideo!.path,
+                imageFormat: video_thumbnail.ImageFormat.JPEG,
+                maxWidth: 720,
+                quality: 75,
+              );
+
+        String thumbUrl = '';
+        if (thumbData != null) {
+          thumbUrl = kIsWeb
+              ? await CloudinaryService.uploadImageBytes(
+                  thumbData,
+                  filename: 'video_thumb.jpg',
+                  onProgress: (progress) {
+                    _setUploadProgress('Uploading video...', progress * 0.2);
+                  },
+                )
+              : await CloudinaryService.uploadBytesAsImage(
+                  thumbData,
+                  onProgress: (progress) {
+                    _setUploadProgress('Uploading video...', progress * 0.2);
+                  },
+                );
+        }
+
+        if (kIsWeb) {
+          final webVideo = _selectedVideoXFile;
+          if (webVideo == null) return;
+
+          videoUrl = await CloudinaryService.uploadVideoBytes(
+            await webVideo.readAsBytes(),
+            filename: webVideo.name,
+            onProgress: (progress) {
+              _setUploadProgress('Uploading video...', 0.2 + (progress * 0.75));
+            },
+          );
+        } else {
+          // upload compressed video (CloudinaryService compresses internally)
+          videoUrl = await CloudinaryService.uploadVideo(
+            _selectedVideo!,
+            onProgress: (progress) {
+              _setUploadProgress('Uploading video...', 0.2 + (progress * 0.75));
+            },
+          );
+        }
+
+        imageUrl = thumbUrl; // store thumbnail as imageUrl for feed
+      } else if (_selectedImages.isNotEmpty) {
+        for (var i = 0; i < _selectedImages.length; i += 1) {
+          final selectedImage = _selectedImages[i];
+          final imageNumber = i + 1;
+          final imageCount = _selectedImages.length;
+          final progressBase = i / imageCount;
+          final progressSlice = 0.95 / imageCount;
+          final status = imageCount == 1
+              ? 'Uploading image...'
+              : 'Uploading image $imageNumber of $imageCount...';
+
+          final uploadedUrl = kIsWeb || selectedImage.file == null
+              ? await CloudinaryService.uploadImageBytes(
+                  selectedImage.bytes,
+                  filename: selectedImage.name,
+                  onProgress: (progress) {
+                    _setUploadProgress(
+                      status,
+                      progressBase + (progress * progressSlice),
+                    );
+                  },
+                )
+              : await CloudinaryService.uploadImage(
+                  selectedImage.file!,
+                  onProgress: (progress) {
+                    _setUploadProgress(
+                      status,
+                      progressBase + (progress * progressSlice),
+                    );
+                  },
+                );
+
+          imageUrls.add(uploadedUrl);
+        }
+        imageUrl = imageUrls.first;
+        type = 'image';
+      }
+
+      _setUploadProgress('Finishing post...', 0.96);
+
+      await PostService.addPost(
+        text: textController.text,
+        imageUrl: imageUrl,
+        imageUrls: imageUrls,
+        videoUrl: videoUrl,
+        type: type,
+        mood: _selectedMood ?? '',
+        category: _selectedCategory ?? '',
+        taggedUserIds: _selectedPeople.map((person) => person.userId).toList(),
+      );
+
+      textController.clear();
+      FocusScope.of(context).unfocus();
+      setState(() {
+        _selectedImages = const [];
+        _selectedVideo = null;
+        _selectedVideoXFile = null;
+        _selectedVideoPreviewUrl = null;
+        _selectedVideoThumbnail = null;
+        _selectedVideoDuration = null;
+        _selectedMood = null;
+        _selectedCategory = null;
+        _selectedPeople = const [];
+        _isUploading = false;
+        _uploadProgress = 0;
+        _uploadStatus = '';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Post uploaded successfully")),
+      );
+      widget.onPostSuccess?.call();
+    } catch (e) {
+      setState(() {
+        _isUploading = false;
+        _uploadProgress = 0;
+        _uploadStatus = '';
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
     }
   }
 
@@ -469,39 +776,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     });
   }
 
-  Widget _buildUploadProgress() {
-    final percent = (_uploadProgress * 100).clamp(0, 100).round();
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          '$_uploadStatus $percent%',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: _uploadProgress,
-              minHeight: 5,
-              backgroundColor: Colors.white24,
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final uploadPercent = (_uploadProgress * 100).clamp(0, 100).round();
+
     return Scaffold(
       backgroundColor: Color(0xFFF9F6FC),
       appBar: AppBar(
@@ -509,20 +787,44 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           "Share something real",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
+        actions: [
+          TextButton(
+            onPressed: _canSharePost ? () => unawaited(_sharePost()) : null,
+            child: const Text(
+              'Share',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 16,
-              right: 16,
-              top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-            ),
-            child: Column(
+        child: Column(
+          children: [
+            if (_isUploading)
+              LinearProgressIndicator(
+                value: _uploadProgress,
+                minHeight: 3,
+                semanticsLabel: _uploadStatus,
+                semanticsValue: '$uploadPercent%',
+                backgroundColor: Colors.deepPurple.withOpacity(0.12),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Colors.deepPurple.shade500,
+                ),
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 16,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                  ),
+                  child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 20),
+                SizedBox(height: 8),
 
                 // Post Card
                 Padding(
@@ -555,7 +857,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     child: TextField(
                       focusNode: focusNode,
                       controller: textController,
-                      minLines: 6,
+                      minLines: 3,
                       maxLines: null,
 
                       keyboardType: TextInputType.multiline,
@@ -592,29 +894,48 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   child: CharacterCounter(count: textController.text.length),
                 ),
 
-                SizedBox(height: 18),
+                SizedBox(height: 14),
 
-                if (_selectedImage != null ||
-                    _selectedImageBytes != null ||
+                PeopleSelector(
+                  selectedPeople: _selectedPeople,
+                  onChanged: (people) {
+                    setState(() {
+                      _selectedPeople = people;
+                    });
+                  },
+                ),
+
+                SizedBox(height: 14),
+
+                MediaActionButtons(
+                  onCameraTap: _openCamera,
+                  onGalleryTap: () {
+                    unawaited(_pickImageFromGallery());
+                  },
+                  onVideoTap: () {
+                    unawaited(_pickVideoFromGallery());
+                  },
+                ),
+
+                SizedBox(height: 16),
+
+                if (_selectedImages.isNotEmpty ||
                     _selectedVideo != null ||
                     _selectedVideoXFile != null) ...[
                   MediaPreviewCard(
-                    selectedImage: _selectedImage,
-                    selectedImageBytes: _selectedImageBytes,
+                    selectedImages: _selectedImages,
                     selectedVideo: _selectedVideo,
                     selectedVideoPreviewUrl: _selectedVideoPreviewUrl,
                     selectedVideoThumbnail: _selectedVideoThumbnail,
                     selectedVideoDuration: _selectedVideoDuration,
-                    onPreviewImage: () {
-                      final image = _selectedImage;
-                      final imageBytes = _selectedImageBytes;
-                      if (image == null && imageBytes == null) return;
+                    onPreviewImage: (index) {
+                      if (_selectedImages.isEmpty) return;
 
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => _LocalImagePreviewScreen(
-                            image: image,
-                            imageBytes: imageBytes,
+                            images: _selectedImages,
+                            initialIndex: index,
                           ),
                         ),
                       );
@@ -633,12 +954,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         ),
                       );
                     },
-                    onRemoveImage: () {
+                    onRemoveImage: (index) {
                       setState(() {
-                        _selectedImage = null;
-                        _selectedImageBytes = null;
-                        _selectedImageName = null;
+                        _selectedImages = List.of(_selectedImages)
+                          ..removeAt(index);
                       });
+                    },
+                    onAddImages: () {
+                      unawaited(_pickAdditionalImages());
                     },
                     onRemoveVideo: () {
                       setState(() {
@@ -650,7 +973,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       });
                     },
                   ),
-                  SizedBox(height: 24),
+                  SizedBox(height: 16),
                 ],
 
                 MoodSelector(
@@ -663,7 +986,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   },
                 ),
 
-                SizedBox(height: 22),
+                SizedBox(height: 16),
 
                 CategorySelector(
                   options: _categories,
@@ -675,241 +998,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   },
                 ),
 
-                SizedBox(height: 24),
-
-                MediaActionButtons(
-                  onCameraTap: _openCamera,
-                  onGalleryTap: () {
-                    unawaited(_pickImageFromGallery());
-                  },
-                  onVideoTap: () {
-                    unawaited(_pickVideoFromGallery());
-                  },
-                ),
-
-                SizedBox(height: 32),
-
-                // Post Button
-                GestureDetector(
-                  onTap: () async {
-                    if (_isUploading) return;
-                    final user = FirebaseAuth.instance.currentUser;
-                    if (user == null) return;
-
-                    if (textController.text.trim().isEmpty &&
-                        _selectedImage == null &&
-                        _selectedImageBytes == null &&
-                        _selectedVideo == null &&
-                        _selectedVideoXFile == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Write something or add a photo/video"),
-                        ),
-                      );
-                      return;
-                    }
-
-                    setState(() {
-                      _isUploading = true;
-                      _uploadProgress = 0;
-                      _uploadStatus =
-                          _selectedVideo != null || _selectedVideoXFile != null
-                          ? 'Uploading video...'
-                          : _selectedImage != null || _selectedImageBytes != null
-                          ? 'Uploading image...'
-                          : 'Sharing...';
-                    });
-
-                    try {
-                      String imageUrl = '';
-                      String videoUrl = '';
-                      String type = 'image';
-
-                      if (_selectedVideo != null ||
-                          _selectedVideoXFile != null) {
-                        type = 'video';
-
-                        final thumbData = kIsWeb || _selectedVideo == null
-                            ? _selectedVideoThumbnail
-                            : await video_thumbnail
-                                  .VideoThumbnail.thumbnailData(
-                                video: _selectedVideo!.path,
-                                imageFormat: video_thumbnail.ImageFormat.JPEG,
-                                maxWidth: 720,
-                                quality: 75,
-                              );
-
-                        String thumbUrl = '';
-                        if (thumbData != null) {
-                          thumbUrl = kIsWeb
-                              ? await CloudinaryService.uploadImageBytes(
-                                  thumbData,
-                                  filename: 'video_thumb.jpg',
-                                  onProgress: (progress) {
-                                    _setUploadProgress(
-                                      'Uploading video...',
-                                      progress * 0.2,
-                                    );
-                                  },
-                                )
-                              : await CloudinaryService.uploadBytesAsImage(
-                                  thumbData,
-                                  onProgress: (progress) {
-                                    _setUploadProgress(
-                                      'Uploading video...',
-                                      progress * 0.2,
-                                    );
-                                  },
-                                );
-                        }
-
-                        if (kIsWeb) {
-                          final webVideo = _selectedVideoXFile;
-                          if (webVideo == null) return;
-
-                          videoUrl = await CloudinaryService.uploadVideoBytes(
-                            await webVideo.readAsBytes(),
-                            filename: webVideo.name,
-                            onProgress: (progress) {
-                              _setUploadProgress(
-                                'Uploading video...',
-                                0.2 + (progress * 0.75),
-                              );
-                            },
-                          );
-                        } else {
-                          // upload compressed video (CloudinaryService compresses internally)
-                          videoUrl = await CloudinaryService.uploadVideo(
-                            _selectedVideo!,
-                            onProgress: (progress) {
-                              _setUploadProgress(
-                                'Uploading video...',
-                                0.2 + (progress * 0.75),
-                              );
-                            },
-                          );
-                        }
-
-                        imageUrl =
-                            thumbUrl; // store thumbnail as imageUrl for feed
-                      } else if (_selectedImage != null ||
-                          _selectedImageBytes != null) {
-                        if (kIsWeb) {
-                          final imageBytes = _selectedImageBytes;
-                          if (imageBytes == null) return;
-                          imageUrl = await CloudinaryService.uploadImageBytes(
-                            imageBytes,
-                            filename: _selectedImageName ?? 'post_image.jpg',
-                            onProgress: (progress) {
-                              _setUploadProgress(
-                                'Uploading image...',
-                                progress * 0.95,
-                              );
-                            },
-                          );
-                        } else {
-                          imageUrl = await CloudinaryService.uploadImage(
-                            _selectedImage!,
-                            onProgress: (progress) {
-                              _setUploadProgress(
-                                'Uploading image...',
-                                progress * 0.95,
-                              );
-                            },
-                          );
-                        }
-                        type = 'image';
-                      }
-
-                      _setUploadProgress('Finishing post...', 0.96);
-
-                      await PostService.addPost(
-                        text: textController.text,
-                        imageUrl: imageUrl,
-                        videoUrl: videoUrl,
-                        type: type,
-                        mood: _selectedMood ?? '',
-                        category: _selectedCategory ?? '',
-                      );
-
-                      textController.clear();
-                      FocusScope.of(context).unfocus();
-                      setState(() {
-                        _selectedImage = null;
-                        _selectedImageBytes = null;
-                        _selectedImageName = null;
-                        _selectedVideo = null;
-                        _selectedVideoXFile = null;
-                        _selectedVideoPreviewUrl = null;
-                        _selectedVideoThumbnail = null;
-                        _selectedVideoDuration = null;
-                        _selectedMood = null;
-                        _selectedCategory = null;
-                        _isUploading = false;
-                        _uploadProgress = 0;
-                        _uploadStatus = '';
-                      });
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Post uploaded successfully"),
-                        ),
-                      );
-                      widget.onPostSuccess?.call();
-                    } catch (e) {
-                      setState(() {
-                        _isUploading = false;
-                        _uploadProgress = 0;
-                        _uploadStatus = '';
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Upload failed: $e')),
-                      );
-                    }
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    height: _isUploading ? 72 : 56,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: _isUploading
-                            ? [
-                                Colors.deepPurple.shade200,
-                                Colors.deepPurple.shade300,
-                              ]
-                            : [
-                                Colors.deepPurple.shade300,
-                                Colors.deepPurple.shade500,
-                              ],
-                      ),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.deepPurple.withOpacity(0.25),
-                          blurRadius: 12,
-                          offset: Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: _isUploading
-                          ? _buildUploadProgress()
-                          : const Text(
-                              "Share Experience",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
+                SizedBox(height: 18),
+              ],
                   ),
                 ),
-
-                SizedBox(height: 40),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

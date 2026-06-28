@@ -11,8 +11,10 @@ import 'edit_profile_screen.dart';
 import 'life_journey_details_screen.dart';
 
 import '../services/cloudinary_service.dart';
+import '../services/share_service.dart';
 import '../utils/route_observer.dart';
 import '../widgets/profile/profile_about_card.dart';
+import '../widgets/profile/featured_people_section.dart';
 import '../widgets/profile/profile_background.dart';
 import '../widgets/profile/profile_life_journey_card.dart';
 import '../widgets/profile/profile_screen_layout.dart';
@@ -465,6 +467,20 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
         titleTextStyle: TextStyle(color: appBarForeground, fontSize: 20),
         actions: [
           IconButton(
+            tooltip: 'Share',
+            icon: const Icon(Icons.ios_share_outlined),
+            onPressed: userName.trim().isEmpty || userName == 'User Name'
+                ? null
+                : () {
+                    ShareService.shareUserProfile(
+                      context,
+                      userName,
+                      displayName: userName,
+                      isCurrentUser: true,
+                    );
+                  },
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
               Navigator.push(
@@ -506,9 +522,11 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
                 relationship: relationship,
                 birthday: birthday,
                 lifeQuote: lifeQuote,
+                compactPriorityOnly: true,
               ),
               ProfileLifeJourneyCard(
                 lifeJourney: lifeJourney,
+                maxItems: 1,
                 onViewAll: () {
                   Navigator.push(
                     context,
@@ -520,13 +538,20 @@ class _ProfileScreenState extends State<ProfileScreen> with RouteAware {
                 },
               ),
               const ProfileStats(),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
               ElevatedButton(
                 onPressed: editProfile,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                ),
                 child: const Text("Edit Profile"),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               const ProfilePostsGrid(),
+              const SizedBox(height: 12),
+              FeaturedPeopleSection(profileUserId: _profileUserId),
               const SizedBox(height: 100),
             ],
           ),

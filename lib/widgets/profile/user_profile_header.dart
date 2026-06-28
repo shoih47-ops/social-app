@@ -5,7 +5,7 @@ import '../../screens/image_view_screen.dart';
 class UserProfileHeader extends StatelessWidget {
   final String? photoUrl;
   final String userName;
-  final String bio;
+  final String? bio;
 
   const UserProfileHeader({
     super.key,
@@ -54,16 +54,18 @@ class UserProfileHeader extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 8),
+        if (bio?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: 8),
 
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            bio.isEmpty ? "" : bio,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.black54, fontSize: 15),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              bio!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black54, fontSize: 15),
+            ),
           ),
-        ),
+        ],
 
         const SizedBox(height: 24),
       ],

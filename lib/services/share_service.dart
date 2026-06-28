@@ -15,6 +15,10 @@ class ShareService {
     return Uri.https(_fallbackWebHost, '/post/$postId');
   }
 
+  static Uri userProfileLink(String username) {
+    return Uri.https(_fallbackWebHost, '/user/${username.trim()}');
+  }
+
   static String? postIdFromInitialLink() {
     if (kIsWeb) {
       return postIdFromUri(Uri.base);
@@ -92,6 +96,32 @@ class ShareService {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Link copied')));
+  }
+
+  static Future<void> sharePostLink(BuildContext context, Post post) async {
+    await Share.share(
+      postDeepLink(post.id).toString(),
+      subject: 'Share this post on Journa',
+      sharePositionOrigin: _shareOrigin(context),
+    );
+  }
+
+  static Future<void> shareUserProfile(
+    BuildContext context,
+    String username, {
+    required String displayName,
+    required bool isCurrentUser,
+  }) async {
+    final link = userProfileLink(username);
+    final trimmedDisplayName = displayName.trim();
+    final introduction = isCurrentUser
+        ? 'Check out my profile on Real Life Share:\n$trimmedDisplayName'
+        : "Check out $trimmedDisplayName's profile on Real Life Share:";
+    await Share.share(
+      '$introduction\n$link',
+      subject: 'Share Profile',
+      sharePositionOrigin: _shareOrigin(context),
+    );
   }
 
   static Future<void> sharePost(BuildContext context, Post post) async {

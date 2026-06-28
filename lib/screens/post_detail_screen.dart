@@ -5,9 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:social_app/screens/image_view_screen.dart';
 import 'package:social_app/utils/time_ago.dart';
-import 'package:social_app/widgets/comment_tile.dart';
-// comment_with_replies is no longer used here
-import 'package:social_app/widgets/reply_tile.dart';
+import 'package:social_app/widgets/comments_list_view.dart';
 import 'profile_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -17,6 +15,7 @@ import '../services/share_service.dart';
 
 import '../widgets/like_button.dart';
 import '../widgets/comment_button.dart';
+import '../widgets/tagged_people_section.dart';
 
 import '../models/post.dart';
 
@@ -31,7 +30,6 @@ class PostDetailScreen extends StatefulWidget {
 
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final TextEditingController commentController = TextEditingController();
-  final Map<String, bool> _showReplies = {};
   Timer? _timeRefreshTimer;
 
   @override
@@ -126,90 +124,47 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     );
 
     commentController.clear();
-
-    setState(() {});
   }
 
-  void sendReply(
-    String commentId,
-    String commentOwnerId,
-    String text,
-  ) async {
-    if (text.isEmpty) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
-        .get();
-
-    final userData = userDoc.data() as Map<String, dynamic>;
-
-    await FirebaseFirestore.instance
-        .collection('posts')
-        .doc(widget.postId)
-        .collection('comments')
-        .doc(commentId)
-        .collection('replies')
-        .add({
-          'text': text,
-          'userId': user.uid,
-          'username': userData['username'],
-          'photoUrl': userData['photoUrl'],
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-    if (commentOwnerId != user.uid) {
-      await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(commentOwnerId)
-          .collection('items')
-          .add({
-            'toUserId': commentOwnerId,
-            'fromUserId': user.uid,
-            'type': 'reply',
-            'isRead': false,
-            'postId': widget.postId,
-            'text': text,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-    }
-  }
-
-  void showReplyDialog(
-    String commentId,
-    String commentOwnerId,
-    String username,
-  ) {
-    final controller = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Reply to $username"),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(hintText: "Write your reply..."),
+  Widget _buildCommentInput(Map<String, dynamic> data) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: commentController,
+              decoration: InputDecoration(
+                hintText: 'Write a comment...',
+                filled: true,
+                fillColor: Colors.grey.shade200,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: () => addComment(data),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: Colors.black,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.send, color: Colors.white),
             ),
-
-            TextButton(
-              onPressed: () {
-                sendReply(commentId, commentOwnerId, controller.text.trim());
-                Navigator.pop(context);
-              },
-              child: const Text("Send"),
-            ),
-          ],
-        );
-      },
-    ).whenComplete(controller.dispose);
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -232,6 +187,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             id: widget.postId,
             text: data['text'] ?? '',
             imageUrl: data['imageUrl'] ?? '',
+            imageUrls: List<String>.from(data['imageUrls'] ?? []),
             videoUrl: data['videoUrl'] ?? '',
             type: data['type'] ?? 'image',
             likedBy: List<String>.from(data['likes'] ?? []),
@@ -243,7 +199,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             userPhoto: data['userPhoto'] ?? '',
             mood: data['mood'] ?? '',
             category: data['category'] ?? '',
+            taggedUserIds: List<String>.from(data['taggedUserIds'] ?? []),
           );
+
+          final imageUrls = post.effectiveImageUrls;
 
           return SafeArea(
             child: Padding(
@@ -252,6 +211,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                 children: [
                   Expanded(
                     child: ListView(
+                      padding: const EdgeInsets.only(bottom: 8),
                       children: [
                         StreamBuilder(
                           stream: FirebaseFirestore.instance
@@ -428,37 +388,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           const SizedBox(height: 12),
                         ],
 
-                        if ((data['imageUrl'] ?? '') != '')
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxHeight: 500,
-                                minHeight: 180,
-                              ),
-                              child: InteractiveViewer(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => ImageViewScreen(
-                                          imageUrl: data['imageUrl'],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  child: Image.network(
-                                    data['imageUrl'],
-                                    width: double.infinity,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
+                        TaggedPeopleSection(userIds: post.taggedUserIds),
 
-                        const SizedBox(height: 14),
+                        if (post.taggedUserIds.isNotEmpty)
+                          const SizedBox(height: 12),
+
+                        if (imageUrls.isNotEmpty)
+                          _PostDetailImageGallery(imageUrls: imageUrls),
+
+                        const SizedBox(height: 10),
 
                         // Videos are viewed in fullscreen; don't embed here.
                         Row(
@@ -486,342 +424,178 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                           ],
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
 
-                        StreamBuilder(
-                          stream: FirebaseFirestore.instance
-                              .collection('posts')
-                              .doc(widget.postId)
-                              .collection('comments')
-                              .orderBy('createdAt', descending: true)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasError) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 24),
-                                child: Center(
-                                  child: Text('Failed to load comments'),
-                                ),
-                              );
-                            }
-
-                            if (!snapshot.hasData) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 24),
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              );
-                            }
-
-                            final comments = snapshot.data!.docs;
-
-                            if (comments.isEmpty) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 24),
-                                child: Center(child: Text('No comments yet')),
-                              );
-                            }
-
-                            return ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: comments.length,
-                              itemBuilder: (context, index) {
-                                final data = comments[index].data();
-
-                                final likes = List<String>.from(
-                                  data['likes'] ?? [],
-                                );
-
-                                return StreamBuilder<DocumentSnapshot>(
-                                  stream: FirebaseFirestore.instance
-                                      .collection('users')
-                                      .doc(data['userId'])
-                                      .snapshots(),
-                                  builder: (context, userSnapshot) {
-                                    if (!userSnapshot.hasData) {
-                                      return const SizedBox();
-                                    }
-
-                                    final userData =
-                                        userSnapshot.data!.data()
-                                            as Map<String, dynamic>;
-
-                                    final currentUserId =
-                                        FirebaseAuth.instance.currentUser!.uid;
-
-                                    final isliked = likes.contains(
-                                      currentUserId,
-                                    );
-
-                                    final commentId = comments[index].id;
-                                    final show =
-                                        _showReplies[commentId] ?? false;
-
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 0,
-                                        vertical: 8,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.03),
-                                                  blurRadius: 6,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            padding: const EdgeInsets.all(12),
-                                            child: CommentTile(
-                                              photoUrl:
-                                                  (userData['photoUrl'] != null)
-                                                  ? userData['photoUrl']
-                                                  : '',
-                                              username:
-                                                  (userData['username'] != null)
-                                                  ? userData['username']
-                                                  : 'Deleted User',
-                                              text: data['text'] ?? '',
-                                              userId: data['userId'] ?? '',
-                                              time: TimeAgoHelper.format(
-                                                TimeAgoHelper.fromFirestore(
-                                                  data['createdAt'],
-                                                ),
-                                              ),
-                                              onReply: () {
-                                                showReplyDialog(
-                                                  commentId,
-                                                  data['userId'],
-                                                  userData['username'] ?? '',
-                                                );
-                                              },
-                                              isLiked: isliked,
-                                              likeCount: likes.length,
-                                              onLike: () async {
-                                                final ref = FirebaseFirestore
-                                                    .instance
-                                                    .collection('posts')
-                                                    .doc(widget.postId)
-                                                    .collection('comments')
-                                                    .doc(commentId);
-
-                                                if (isliked) {
-                                                  await ref.update({
-                                                    'likes':
-                                                        FieldValue.arrayRemove([
-                                                          currentUserId,
-                                                        ]),
-                                                  });
-                                                } else {
-                                                  await ref.update({
-                                                    'likes':
-                                                        FieldValue.arrayUnion([
-                                                          currentUserId,
-                                                        ]),
-                                                  });
-                                                }
-                                              },
-                                              onDelete: () async {
-                                                await FirebaseFirestore.instance
-                                                    .collection('posts')
-                                                    .doc(widget.postId)
-                                                    .collection('comments')
-                                                    .doc(commentId)
-                                                    .delete();
-                                              },
-                                            ),
-                                          ),
-
-                                          const SizedBox(height: 4),
-
-                                          StreamBuilder(
-                                            stream: FirebaseFirestore.instance
-                                                .collection('posts')
-                                                .doc(widget.postId)
-                                                .collection('comments')
-                                                .doc(commentId)
-                                                .collection('replies')
-                                                .orderBy('createdAt')
-                                                .snapshots(),
-                                            builder: (context, replySnapshot) {
-                                              if (!replySnapshot.hasData) {
-                                                return const SizedBox();
-                                              }
-
-                                              final replies =
-                                                  replySnapshot.data!.docs;
-
-                                              return Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  if (replies.isNotEmpty)
-                                                    Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            left: 44,
-                                                            top: 2,
-                                                            bottom: 1,
-                                                          ),
-                                                      child: TextButton(
-                                                        style: TextButton.styleFrom(
-                                                          padding:
-                                                              EdgeInsets.zero,
-                                                          minimumSize:
-                                                              const Size(0, 0),
-                                                          tapTargetSize:
-                                                              MaterialTapTargetSize
-                                                                  .shrinkWrap,
-                                                          alignment: Alignment
-                                                              .centerLeft,
-                                                        ),
-                                                        onPressed: () {
-                                                          setState(() {
-                                                            _showReplies[commentId] =
-                                                                !(_showReplies[commentId] ??
-                                                                    false);
-                                                          });
-                                                        },
-                                                        child: Text(
-                                                          replies.length == 1
-                                                              ? '1 Reply'
-                                                              : '${replies.length} Replies',
-                                                          style: TextStyle(
-                                                            color: Colors
-                                                                .grey
-                                                                .shade600,
-                                                            fontSize: 12,
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-
-                                                  if (show)
-                                                    Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            left: 44,
-                                                            top: 1,
-                                                          ),
-                                                      child: Column(
-                                                        children: replies.map((
-                                                          reply,
-                                                        ) {
-                                                          final replyData =
-                                                              reply.data();
-                                                          return ReplyTile(
-                                                            replyData:
-                                                                replyData,
-                                                            repliedToUsername:
-                                                                userData['username'] ??
-                                                                'Unknown',
-                                                            onDelete: () async {
-                                                              await FirebaseFirestore
-                                                                  .instance
-                                                                  .collection(
-                                                                    'posts',
-                                                                  )
-                                                                  .doc(
-                                                                    widget
-                                                                        .postId,
-                                                                  )
-                                                                  .collection(
-                                                                    'comments',
-                                                                  )
-                                                                  .doc(
-                                                                    commentId,
-                                                                  )
-                                                                  .collection(
-                                                                    'replies',
-                                                                  )
-                                                                  .doc(reply.id)
-                                                                  .delete();
-                                                            },
-                                                          );
-                                                        }).toList(),
-                                                      ),
-                                                    ),
-                                                ],
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            );
-                          },
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: commentController,
-                                  decoration: InputDecoration(
-                                    hintText: 'Write a comment...',
-                                    filled: true,
-                                    fillColor: Colors.grey.shade200,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(30),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(width: 10),
-
-                              GestureDetector(
-                                onTap: () => addComment(data),
-                                child: Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.send,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
+                        CommentsListView(
+                          postId: widget.postId,
+                          postOwnerId: post.userId,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          commentPadding: const EdgeInsets.symmetric(
+                            horizontal: 0,
+                            vertical: 6,
                           ),
                         ),
+
                       ],
                     ),
                   ),
+                  _buildCommentInput(data),
                 ],
               ),
             ),
           );
         },
       ),
+    );
+  }
+}
+
+class _PostDetailImageGallery extends StatefulWidget {
+  final List<String> imageUrls;
+
+  const _PostDetailImageGallery({required this.imageUrls});
+
+  @override
+  State<_PostDetailImageGallery> createState() =>
+      _PostDetailImageGalleryState();
+}
+
+class _PostDetailImageGalleryState extends State<_PostDetailImageGallery> {
+  int _page = 0;
+  final Map<String, double> _aspectRatios = {};
+  final Set<String> _resolvingUrls = {};
+
+  @override
+  void didUpdateWidget(covariant _PostDetailImageGallery oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrls != widget.imageUrls) {
+      _page = 0;
+      _aspectRatios.removeWhere((url, _) => !widget.imageUrls.contains(url));
+      _resolvingUrls.removeWhere((url) => !widget.imageUrls.contains(url));
+    }
+  }
+
+  void _resolveAspectRatio(BuildContext context, String imageUrl) {
+    if (_aspectRatios.containsKey(imageUrl) ||
+        _resolvingUrls.contains(imageUrl)) {
+      return;
+    }
+
+    _resolvingUrls.add(imageUrl);
+    final provider = NetworkImage(imageUrl);
+    final stream = provider.resolve(createLocalImageConfiguration(context));
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (imageInfo, _) {
+        final image = imageInfo.image;
+        final aspectRatio = image.width / image.height;
+        stream.removeListener(listener);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _resolvingUrls.remove(imageUrl);
+            _aspectRatios[imageUrl] = aspectRatio;
+          });
+        });
+      },
+      onError: (_, _) {
+        stream.removeListener(listener);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _resolvingUrls.remove(imageUrl);
+          });
+        });
+      },
+    );
+    stream.addListener(listener);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentImageUrl = widget.imageUrls[_page];
+    _resolveAspectRatio(context, currentImageUrl);
+    final aspectRatio = _aspectRatios[currentImageUrl] ?? 1;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.68;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: constraints.maxWidth,
+              maxHeight: maxHeight,
+            ),
+            child: AspectRatio(
+              aspectRatio: aspectRatio,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PageView.builder(
+                      itemCount: widget.imageUrls.length,
+                      onPageChanged: (page) {
+                        setState(() {
+                          _page = page;
+                        });
+                      },
+                      itemBuilder: (context, index) {
+                        final imageUrl = widget.imageUrls[index];
+                        _resolveAspectRatio(context, imageUrl);
+
+                        return InteractiveViewer(
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ImageViewScreen(imageUrl: imageUrl),
+                                ),
+                              );
+                            },
+                            child: Image.network(
+                              imageUrl,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    if (widget.imageUrls.length > 1)
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.56),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${_page + 1}/${widget.imageUrls.length}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

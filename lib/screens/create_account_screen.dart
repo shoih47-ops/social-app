@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'edit_profile_screen.dart';
+import 'create_username_screen.dart';
 
 class CreateAccountScreen extends StatefulWidget {
   final String? initialPostId;
@@ -69,8 +69,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => EditProfileScreen(
-            completeOnSave: true,
+          builder: (_) => CreateUsernameScreen(
             initialPostId: widget.initialPostId,
           ),
         ),

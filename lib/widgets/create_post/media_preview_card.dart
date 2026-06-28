@@ -1,21 +1,20 @@
 part of '../../screens/create_post_screen.dart';
 
 class MediaPreviewCard extends StatelessWidget {
-  final File? selectedImage;
-  final Uint8List? selectedImageBytes;
+  final List<_CroppedPostImage> selectedImages;
   final File? selectedVideo;
   final String? selectedVideoPreviewUrl;
   final Uint8List? selectedVideoThumbnail;
   final Duration? selectedVideoDuration;
-  final VoidCallback onPreviewImage;
+  final ValueChanged<int> onPreviewImage;
   final VoidCallback onPreviewVideo;
-  final VoidCallback onRemoveImage;
+  final ValueChanged<int> onRemoveImage;
+  final VoidCallback onAddImages;
   final VoidCallback onRemoveVideo;
 
   const MediaPreviewCard({
     super.key,
-    required this.selectedImage,
-    required this.selectedImageBytes,
+    required this.selectedImages,
     required this.selectedVideo,
     required this.selectedVideoPreviewUrl,
     required this.selectedVideoThumbnail,
@@ -23,66 +22,141 @@ class MediaPreviewCard extends StatelessWidget {
     required this.onPreviewImage,
     required this.onPreviewVideo,
     required this.onRemoveImage,
+    required this.onAddImages,
     required this.onRemoveVideo,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (selectedImage != null || selectedImageBytes != null) {
-      return Stack(
-        children: [
-          GestureDetector(
-            onTap: onPreviewImage,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.75),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.deepPurple.shade100),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
-                    blurRadius: 12,
-                    offset: Offset(0, 6),
+    if (selectedImages.isNotEmpty) {
+      final coverImage = selectedImages.first;
+
+      return Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.75),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.deepPurple.shade100),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 12,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Stack(
+              children: [
+                GestureDetector(
+                  onTap: () => onPreviewImage(0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _CroppedImageView(
+                      image: coverImage,
+                      height: 210,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: kIsWeb && selectedImageBytes != null
-                    ? Image.memory(
-                        selectedImageBytes!,
-                        height: 220,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        filterQuality: FilterQuality.high,
-                      )
-                    : Image.file(
-                        selectedImage!,
-                        height: 220,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        filterQuality: FilterQuality.high,
-                      ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: GestureDetector(
-              onTap: onRemoveImage,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close, color: Colors.white, size: 18),
+                Positioned(
+                  top: 10,
+                  left: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.58),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '1/${selectedImages.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: () => onRemoveImage(0),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 70,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: selectedImages.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  if (index == selectedImages.length) {
+                    return _AddImageTile(onTap: onAddImages);
+                  }
+
+                  final image = selectedImages[index];
+                  return GestureDetector(
+                    onTap: () => onPreviewImage(index),
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: _CroppedImageView(
+                            image: image,
+                            height: 70,
+                            width: 70,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => onRemoveImage(index),
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.62),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -260,32 +334,111 @@ class MediaPreviewCard extends StatelessWidget {
   }
 }
 
-class _LocalImagePreviewScreen extends StatelessWidget {
-  final File? image;
-  final Uint8List? imageBytes;
+class _CroppedImageView extends StatelessWidget {
+  final _CroppedPostImage image;
+  final double height;
+  final double width;
+  final BoxFit fit;
 
-  const _LocalImagePreviewScreen({this.image, this.imageBytes});
+  const _CroppedImageView({
+    required this.image,
+    required this.height,
+    required this.width,
+    required this.fit,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb || image.file == null) {
+      return Image.memory(
+        image.bytes,
+        height: height,
+        width: width,
+        fit: fit,
+        filterQuality: FilterQuality.high,
+      );
+    }
+
+    return Image.file(
+      image.file!,
+      height: height,
+      width: width,
+      fit: fit,
+      filterQuality: FilterQuality.high,
+    );
+  }
+}
+
+class _AddImageTile extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AddImageTile({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 70,
+        height: 70,
+        decoration: BoxDecoration(
+          color: Colors.deepPurple.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.deepPurple.shade100),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add, color: Colors.deepPurple.shade400, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              'Add',
+              style: TextStyle(
+                color: Colors.deepPurple.shade400,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LocalImagePreviewScreen extends StatelessWidget {
+  final List<_CroppedPostImage> images;
+  final int initialIndex;
+
+  const _LocalImagePreviewScreen({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = PageController(initialPage: initialIndex);
+    final size = MediaQuery.sizeOf(context);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Center(
-            child: InteractiveViewer(
-              child: kIsWeb && imageBytes != null
-                  ? Image.memory(
-                      imageBytes!,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    )
-                  : Image.file(
-                      image!,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    ),
-            ),
+          PageView.builder(
+            controller: controller,
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              return Center(
+                child: InteractiveViewer(
+                  child: _CroppedImageView(
+                    image: images[index],
+                    height: size.height,
+                    width: size.width,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              );
+            },
           ),
           Positioned(
             top: 12 + MediaQuery.of(context).padding.top,

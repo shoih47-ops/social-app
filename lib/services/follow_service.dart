@@ -21,6 +21,11 @@ class FollowService {
           'type': 'follow',
           'fromUserId': myId,
           'fromUsername': myUsername,
+          'postId': '',
+          'postType': '',
+          'senderId': myId,
+          'receiverId': userId,
+          'notificationType': 'follow',
           'createdAt': FieldValue.serverTimestamp(),
           'isRead': false,
         });
